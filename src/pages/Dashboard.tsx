@@ -42,21 +42,23 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      <h1>Captain’s Logbook</h1>
-      <p className="muted">Your progress, study habits and what to tackle next.</p>
+      <header className="page-title window">
+        <h1>Adventure Log</h1>
+        <p className="muted">Your progress, study habits and what to tackle next.</p>
+      </header>
 
       <section className="tiles">
         <Tile icon="⭐" label="Level" value={`${lv.level}`} sub={titleFor(lv.level)} />
-        <Tile icon="✨" label="Total XP" value={xp.toLocaleString()} sub={`${lv.next - xp} XP to level ${lv.level + 1}`} />
-        <Tile icon="📜" label="Quests" value={`${questsDone}/${TOTAL_QUESTS}`} sub={`${Math.round((questsDone / TOTAL_QUESTS) * 100)}% of the archipelago`} />
-        <Tile icon="🏝️" label="Islands" value={`${islandsDone}/${ISLANDS.length}`} sub="conquered" />
+        <Tile icon="✨" label="Total EXP" value={xp.toLocaleString()} sub={`${lv.next - xp} EXP to LV ${lv.level + 1}`} />
+        <Tile icon="📜" label="Quests" value={`${questsDone}/${TOTAL_QUESTS}`} sub={`${Math.round((questsDone / TOTAL_QUESTS) * 100)}% of the realm`} />
+        <Tile icon="🗺️" label="Areas" value={`${islandsDone}/${ISLANDS.length}`} sub="cleared" />
         <Tile icon="🔥" label="Streak" value={`${st.current}d`} sub={`best ${st.best} days`} />
         <Tile icon="⏱️" label="Study time" value={fmtHours(totalMinutes)} sub={`${fmtHours(weekMinutes)} this week`} />
       </section>
 
       <div className="dash-grid">
         <section className="card">
-          <h2>🧭 Continue your voyage</h2>
+          <h2>🧭 Continue your adventure</h2>
           {next.length ? (
             <ul className="next-list">
               {next.map(({ island, quest, index }) => (
@@ -74,12 +76,12 @@ export default function Dashboard() {
               ))}
             </ul>
           ) : (
-            <p>Every island is conquered. You are an Odyssey Legend. 👑</p>
+            <p>Every area is cleared. You are a Living Legend. 👑</p>
           )}
         </section>
 
         <section className="card">
-          <h2>🗺️ Regions</h2>
+          <h2>🗺️ Lands</h2>
           {(Object.keys(REGIONS) as Region[]).map((r) => {
             const islands = ISLANDS.filter((i) => i.region === r);
             const total = islands.reduce((n, i) => n + i.quests.length, 0);
@@ -126,7 +128,7 @@ export default function Dashboard() {
         </section>
 
         <section className="card">
-          <h2>📜 Recent quizzes</h2>
+          <h2>⚔️ Recent trials</h2>
           {recentQuizzes.length ? (
             <ul className="plain">
               {recentQuizzes.map((a, i) => {
@@ -170,7 +172,7 @@ export default function Dashboard() {
               })}
             </ul>
           ) : (
-            <p className="muted">Boss quests ask you to submit a GitHub repo. Approved projects are listed here, ready for your resume.</p>
+            <p className="muted">Boss battles ask you to submit a GitHub repo. Approved projects are listed here, ready for your resume.</p>
           )}
         </section>
       </div>
@@ -180,7 +182,7 @@ export default function Dashboard() {
 
 function Tile({ icon, label, value, sub }: { icon: string; label: string; value: string; sub: string }) {
   return (
-    <div className="tile">
+    <div className="tile window">
       <span className="tile-icon">{icon}</span>
       <span className="tile-label">{label}</span>
       <strong className="tile-value">{value}</strong>

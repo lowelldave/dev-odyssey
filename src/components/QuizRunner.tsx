@@ -49,8 +49,8 @@ export default function QuizRunner({ island, quest, checkpoint }: { island: Isla
   return (
     <div className="quiz">
       <p className="muted small">
-        Score {checkpoint.passPercent}% or higher to clear this quest. Questions and answers are shuffled each attempt.
-        {alreadyDone && ' You already cleared this one, so retakes are just for practice.'}
+        Score {checkpoint.passPercent}% or higher to win this trial. Questions and answers are shuffled each attempt.
+        {alreadyDone && ' You already won this one, so retakes are just for practice.'}
       </p>
       {questions.map((q, qi) => (
         <fieldset key={`${round}-${qi}`} className="quiz-q">
@@ -81,16 +81,16 @@ export default function QuizRunner({ island, quest, checkpoint }: { island: Isla
 
       {!submitted ? (
         <button className="btn btn-primary" disabled={answers.some((a) => a === null)} onClick={submit}>
-          Submit answers
+          ⚔️ Attack! (submit answers)
         </button>
       ) : (
         <div className={`result ${passed ? 'pass' : 'fail'}`}>
           <strong>
-            {passed ? '🎉 Passed!' : '⚓ Not quite.'} {correct}/{questions.length} correct ({score}%)
+            {passed ? '⚔️ Trial won!' : '💫 You were defeated…'} {correct}/{questions.length} correct ({score}%)
           </strong>
-          {!passed && <p>Review the briefing and study scrolls, then try again.</p>}
+          {!passed && <p>Rest, review the briefing and tomes, then challenge the trial again.</p>}
           <button className="btn" onClick={retry}>
-            {passed ? 'Practice again' : 'Retry quiz'}
+            {passed ? 'Practice again' : 'Retry trial'}
           </button>
         </div>
       )}

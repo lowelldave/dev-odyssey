@@ -83,7 +83,7 @@ export default function ProjectChecker({ island, quest, checkpoint }: { island: 
             spellCheck={false}
           />
           <button className="btn btn-primary" disabled={busy || !parseRepoUrl(url)}>
-            {busy ? 'Inspecting…' : 'Run checks'}
+            {busy ? 'Battling…' : '⚔️ Fight the boss'}
           </button>
         </div>
         <p className="muted small">
@@ -91,7 +91,7 @@ export default function ProjectChecker({ island, quest, checkpoint }: { island: 
           {!token && (
             <>
               {' '}
-              If you hit the limit, add a token in <Link to="/profile">Profile → Settings</Link>.
+              If you hit the limit, add a token in <Link to="/profile">Status → Settings</Link>.
             </>
           )}
         </p>
@@ -103,7 +103,7 @@ export default function ProjectChecker({ island, quest, checkpoint }: { island: 
         <div className={`report ${report.passed ? 'pass' : 'fail'}`}>
           <div className="report-head">
             <div>
-              <strong>{report.passed ? '🏆 Project approved!' : '🧭 Not ready yet'}</strong>
+              <strong>{report.passed ? '🏆 Boss defeated! Project approved.' : '💫 The boss still stands'}</strong>
               <p className="muted small">
                 {report.repo} @ {report.branch} · {report.fileCount} files inspected
               </p>

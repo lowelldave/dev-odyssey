@@ -11,16 +11,16 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'ai-fundamentals',
-    name: 'Shores of Insight',
+    name: 'Insight Shrine',
     subject: 'AI & Machine Learning Fundamentals',
     region: 'ai',
     tier: 'Beginner',
     emoji: '💡',
     color: '#f39c12',
-    pos: { x: 520, y: 330 },
+    pos: { x: 800, y: 470 },
     requires: ['python'],
     stack: ['Python', 'NumPy', 'pandas', 'Jupyter'],
-    blurb: 'Where the AI Frontier begins. What AI, ML and deep learning really are — no hype.',
+    blurb: 'Where the Arcane Highlands begin. What AI, ML and deep learning really are — no hype.',
     quests: [
       quest(
         'what-is-ai',
@@ -106,16 +106,16 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'ml',
-    name: 'Neural Narrows',
+    name: 'Neural Pass',
     subject: 'Deep Learning with PyTorch',
     region: 'ai',
     tier: 'Intermediate',
     emoji: '🧠',
     color: '#ee4c2c',
-    pos: { x: 680, y: 180 },
+    pos: { x: 1020, y: 260 },
     requires: ['ai-fundamentals'],
     stack: ['PyTorch', 'torchvision', 'Hugging Face', 'Weights & Biases'],
-    blurb: 'Navigate the narrow straits of neural networks: tensors, gradients and training loops.',
+    blurb: 'Cross the treacherous mountain pass of neural networks: tensors, gradients and training loops.',
     quests: [
       quest(
         'nn',
@@ -200,15 +200,15 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'llm',
-    name: 'LLM Lighthouse',
+    name: 'Oracle Tower',
     subject: 'Large Language Models & Prompting',
     region: 'ai',
     tier: 'Intermediate',
     emoji: '🔮',
     color: '#d97757',
-    pos: { x: 850, y: 320 },
+    pos: { x: 1260, y: 460 },
     requires: ['ai-fundamentals'],
-    blurb: 'The beacon of the AI age. Understand how LLMs work and how to talk to them.',
+    blurb: 'The oracle of the AI age. Understand how LLMs work and how to talk to them.',
     quests: [
       quest(
         'how-llms-work',
@@ -292,13 +292,13 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'ai-apps',
-    name: 'Copilot Cove',
+    name: 'Copilot Workshop',
     subject: 'Building AI-Powered Apps',
     region: 'ai',
     tier: 'Intermediate',
     emoji: '✨',
     color: '#cc785c',
-    pos: { x: 1010, y: 190 },
+    pos: { x: 1560, y: 300 },
     requires: ['llm', 'backend'],
     stack: ['Claude API', 'Vercel AI SDK', 'Streaming', 'Structured output', 'Tool use'],
     blurb: 'Bring AI into real products: chat, streaming, structured data and tools.',
@@ -391,9 +391,9 @@ export const AI: Island[] = [
     subject: 'Embeddings, Vector DBs & RAG',
     region: 'ai',
     tier: 'Advanced',
-    emoji: '🧭',
+    emoji: '🗝️',
     color: '#16a085',
-    pos: { x: 1170, y: 320 },
+    pos: { x: 1800, y: 470 },
     requires: ['ai-apps', 'databases'],
     stack: ['Embeddings', 'pgvector', 'Pinecone/Qdrant', 'Rerankers'],
     blurb: 'Give models a memory. Retrieve the right knowledge before generating.',
@@ -483,13 +483,13 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'agents',
-    name: 'Agent Atoll',
+    name: 'Agent Academy',
     subject: 'AI Agents & MCP',
     region: 'ai',
     tier: 'Advanced',
     emoji: '🤖',
     color: '#8e44ad',
-    pos: { x: 1330, y: 190 },
+    pos: { x: 2040, y: 260 },
     requires: ['rag'],
     stack: ['Tool use', 'Model Context Protocol', 'Claude Agent SDK', 'LangGraph'],
     blurb: 'Models that act. Design agents that plan, use tools and connect to the world safely.',
@@ -579,13 +579,13 @@ export const AI: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'finetune',
-    name: 'Transformer Trench',
+    name: 'Transformer Forge',
     subject: 'Fine-Tuning, Open Models & Local AI',
     region: 'ai',
     tier: 'Expert',
-    emoji: '🔬',
+    emoji: '⚒️',
     color: '#ffb000',
-    pos: { x: 860, y: 75 },
+    pos: { x: 1300, y: 190 },
     requires: ['ml', 'llm'],
     stack: ['Hugging Face', 'LoRA/QLoRA', 'Ollama', 'vLLM'],
     blurb: 'Go deep. Customise open-weight models and run them yourself.',
@@ -679,10 +679,10 @@ export const AI: Island[] = [
     tier: 'Expert',
     emoji: '🔭',
     color: '#2c3e50',
-    pos: { x: 1490, y: 320 },
+    pos: { x: 2260, y: 450 },
     requires: ['agents', 'cloud'],
     stack: ['Evals', 'Tracing', 'Prompt caching', 'Guardrails', 'Cost monitoring'],
-    blurb: 'The summit of the AI Frontier. Run AI systems that are measured, safe, fast and affordable.',
+    blurb: 'The summit of the Arcane Highlands. Run AI systems that are measured, safe, fast and affordable.',
     quests: [
       quest(
         'evals',

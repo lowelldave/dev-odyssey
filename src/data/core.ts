@@ -24,15 +24,15 @@ export const CORE: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'web',
-    name: 'Harbor of the Web',
+    name: 'Webhaven Village',
     subject: 'How the Web Works',
     region: 'core',
     tier: 'Beginner',
-    emoji: '⚓',
+    emoji: '🏡',
     color: '#4fb3bf',
-    pos: { x: 520, y: 1070 },
+    pos: { x: 800, y: 1700 },
     requires: [],
-    blurb: 'Every voyage starts at the harbor. Learn what really happens between typing a URL and seeing a page.',
+    blurb: 'Every adventure begins in a humble village. Learn what really happens between typing a URL and seeing a page.',
     quests: [
       quest(
         'internet',
@@ -148,7 +148,7 @@ export const CORE: Island[] = [
     tier: 'Beginner',
     emoji: '🌿',
     color: '#7cc576',
-    pos: { x: 690, y: 1110 },
+    pos: { x: 1080, y: 1700 },
     requires: ['web'],
     blurb: 'Structure and style. Build pages that are semantic, accessible and beautiful on every screen.',
     quests: [
@@ -232,7 +232,7 @@ export const CORE: Island[] = [
         'boss',
         'Boss: Personal Portfolio Site',
         'Your first true portfolio piece: a responsive, accessible personal site that will host all future projects.',
-        ['This site becomes the home for every project you build on this odyssey.', 'Aim for a Lighthouse accessibility score of 90+.'],
+        ['This site becomes the home for every project you build on this adventure.', 'Aim for a Lighthouse accessibility score of 90+.'],
         [r('web.dev: Lighthouse', 'https://developer.chrome.com/docs/lighthouse/overview')],
         project(
           'Responsive Personal Portfolio',
@@ -269,7 +269,7 @@ export const CORE: Island[] = [
     tier: 'Beginner',
     emoji: '⚡',
     color: '#f2c94c',
-    pos: { x: 860, y: 1050 },
+    pos: { x: 1360, y: 1700 },
     requires: ['html-css'],
     blurb: 'The language of the web. Climb from variables to async code and the DOM.',
     quests: [
@@ -382,15 +382,15 @@ export const CORE: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'git',
-    name: 'Version Cove',
+    name: 'Version Grove',
     subject: 'Git, GitHub & Tooling',
     region: 'core',
     tier: 'Beginner',
     emoji: '🌳',
     color: '#e8875b',
-    pos: { x: 1030, y: 1110 },
+    pos: { x: 1640, y: 1700 },
     requires: ['javascript'],
-    blurb: 'Every professional ship keeps a log. Master version control, collaboration and the npm toolbelt.',
+    blurb: 'An ancient grove that remembers every change. Master version control, collaboration and the npm toolbelt.',
     quests: [
       quest(
         'git-basics',
@@ -509,7 +509,7 @@ export const CORE: Island[] = [
     tier: 'Intermediate',
     emoji: '🏰',
     color: '#3178c6',
-    pos: { x: 1200, y: 1050 },
+    pos: { x: 1920, y: 1700 },
     requires: ['git'],
     blurb: 'Fortify your JavaScript with static types. The industry default for serious web apps.',
     quests: [
@@ -608,7 +608,7 @@ export const CORE: Island[] = [
     tier: 'Intermediate',
     emoji: '⚛️',
     color: '#61dafb',
-    pos: { x: 1300, y: 890 },
+    pos: { x: 1960, y: 1400 },
     requires: ['typescript'],
     stack: ['React', 'Vite', 'TypeScript', 'React Router', 'TanStack Query', 'Tailwind CSS'],
     blurb: 'A forest of components. Build fast, interactive UIs with React and the modern frontend toolchain.',
@@ -731,7 +731,7 @@ export const CORE: Island[] = [
     tier: 'Intermediate',
     emoji: '🏜️',
     color: '#c97b4a',
-    pos: { x: 1120, y: 860 },
+    pos: { x: 1680, y: 1400 },
     requires: ['typescript'],
     stack: ['Node.js', 'Express', 'TypeScript', 'Zod', 'JWT'],
     blurb: 'Behind every UI is a server. Build robust APIs with Node.js and Express.',
@@ -856,10 +856,10 @@ export const CORE: Island[] = [
     tier: 'Intermediate',
     emoji: '🗄️',
     color: '#6c7ae0',
-    pos: { x: 940, y: 890 },
+    pos: { x: 1400, y: 1400 },
     requires: ['backend'],
     stack: ['PostgreSQL', 'Prisma / Drizzle', 'MongoDB', 'Redis'],
-    blurb: 'Dive deep where data lives. Model, query and scale relational and document databases.',
+    blurb: 'Descend into the dungeon where data lives. Model, query and scale relational and document databases.',
     quests: [
       quest(
         'sql',
@@ -977,7 +977,7 @@ export const CORE: Island[] = [
     tier: 'Intermediate',
     emoji: '🧪',
     color: '#9b59b6',
-    pos: { x: 760, y: 860 },
+    pos: { x: 1120, y: 1400 },
     requires: ['frontend', 'databases'],
     stack: ['Vitest', 'Testing Library', 'Playwright', 'MSW'],
     blurb: 'Trust, but verify. Learn to write tests that let you ship confidently.',
@@ -1077,7 +1077,7 @@ export const CORE: Island[] = [
     tier: 'Advanced',
     emoji: '🛡️',
     color: '#c0392b',
-    pos: { x: 580, y: 890 },
+    pos: { x: 840, y: 1400 },
     requires: ['testing'],
     blurb: 'Raise the drawbridge. Defend apps against the most common attacks.',
     quests: [
@@ -1170,13 +1170,13 @@ export const CORE: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'docker',
-    name: 'Container Docks',
+    name: 'Container Quarry',
     subject: 'Docker & Containers',
     region: 'core',
     tier: 'Advanced',
     emoji: '🐳',
     color: '#2496ed',
-    pos: { x: 560, y: 700 },
+    pos: { x: 820, y: 1100 },
     requires: ['security'],
     blurb: 'Package your apps into containers that run the same everywhere.',
     quests: [
@@ -1277,10 +1277,10 @@ export const CORE: Island[] = [
     tier: 'Advanced',
     emoji: '🌊',
     color: '#1abc9c',
-    pos: { x: 740, y: 690 },
+    pos: { x: 1100, y: 1100 },
     requires: ['docker'],
     stack: ['GitHub Actions', 'Docker', 'GHCR'],
-    blurb: 'Let the river do the work. Automate testing, building and deploying on every push.',
+    blurb: 'Let the waterfall turn the mill wheels. Automate testing, building and deploying on every push.',
     quests: [
       quest(
         'ci',
@@ -1380,7 +1380,7 @@ export const CORE: Island[] = [
     tier: 'Advanced',
     emoji: '☁️',
     color: '#ff9900',
-    pos: { x: 920, y: 720 },
+    pos: { x: 1380, y: 1100 },
     requires: ['cicd'],
     stack: ['AWS', 'Vercel', 'Terraform', 'Cloudflare'],
     blurb: 'Rise above the clouds. Deploy, scale and observe real apps on cloud platforms.',
@@ -1474,16 +1474,16 @@ export const CORE: Island[] = [
   /* ------------------------------------------------------------------ */
   {
     id: 'realtime',
-    name: 'Realtime Reef',
+    name: 'Echo Caverns',
     subject: 'GraphQL, WebSockets & Realtime',
     region: 'core',
     tier: 'Advanced',
     emoji: '📡',
     color: '#e056a0',
-    pos: { x: 1100, y: 690 },
+    pos: { x: 1680, y: 1100 },
     requires: ['databases'],
     stack: ['GraphQL', 'Apollo', 'Socket.IO', 'Server-Sent Events'],
-    blurb: 'Beyond REST. Live data, flexible queries and event-driven systems.',
+    blurb: 'Where every whisper echoes instantly. Live data, flexible queries and event-driven systems.',
     quests: [
       quest(
         'graphql',
@@ -1578,7 +1578,7 @@ export const CORE: Island[] = [
     tier: 'Expert',
     emoji: '🗼',
     color: '#8e7cc3',
-    pos: { x: 1280, y: 700 },
+    pos: { x: 1960, y: 1100 },
     requires: ['cloud', 'realtime'],
     blurb: 'See the whole map. Design systems that are fast, reliable and scalable.',
     quests: [
@@ -1676,9 +1676,9 @@ export const CORE: Island[] = [
     tier: 'Expert',
     emoji: '🏔️',
     color: '#f1c40f',
-    pos: { x: 990, y: 520 },
+    pos: { x: 1400, y: 800 },
     requires: ['architecture'],
-    blurb: 'The final ascent. Ship a real product that ties every island together.',
+    blurb: 'The final ascent. Ship a real product that ties every realm together.',
     quests: [
       quest(
         'plan',

@@ -34,18 +34,18 @@ export default function Profile() {
 
   return (
     <div className="profile">
-      <section className="player-card">
+      <section className="player-card window">
         <div className="player-avatar">{s.avatar}</div>
         <div className="player-info">
           <input className="name-input" value={s.name} onChange={(e) => s.setProfile({ name: e.target.value })} aria-label="Your name" maxLength={30} />
           <p className="title-line">
-            Level {lv.level} · {titleFor(lv.level)}
+            LV {lv.level} · {titleFor(lv.level)}
           </p>
           <span className="xpbar big">
             <span style={{ width: `${Math.round(lv.progress * 100)}%` }} />
           </span>
           <p className="muted small">
-            {s.xp - lv.floor} / {lv.next - lv.floor} XP to level {lv.level + 1}
+            {s.xp - lv.floor} / {lv.next - lv.floor} EXP to LV {lv.level + 1}
           </p>
           <div className="avatar-pick">
             {AVATARS.map((a) => (
@@ -58,12 +58,12 @@ export default function Profile() {
       </section>
 
       <section>
-        <h2>
-          🎖️ Badges <span className="muted small">({earned}/{badges.length})</span>
+        <h2 className="badges-title">
+          🎖️ Achievements ({earned}/{badges.length})
         </h2>
         <div className="badges">
           {badges.map((b) => (
-            <div key={b.id} className={`badge ${b.earned ? 'earned' : ''}`} title={b.desc}>
+            <div key={b.id} className={`badge window ${b.earned ? 'earned' : ''}`} title={b.desc}>
               <span className="badge-emoji">{b.earned ? b.emoji : '❔'}</span>
               <strong>{b.name}</strong>
               <span className="muted small">{b.desc}</span>

@@ -34,26 +34,26 @@ export function computeBadges({ completed, quizAttempts, submissions, activity }
     list.push({ id, emoji, name, desc, test });
 
   add('first-quest', '🥾', 'First Steps', 'Complete your first quest.', Object.keys(completed).length > 0);
-  add('first-island', '🏝️', 'Island Hopper', 'Conquer your first island.', islandsDone >= 1);
-  add('perfect', '🎯', 'Bullseye', 'Score 100% on a quiz.', quizAttempts.some((a) => a.score === 100));
-  add('quizmaster', '🧠', 'Quizmaster', 'Pass 25 quizzes.', passedQuizzes >= 25);
-  add('shipwright', '⚓', 'Shipwright', 'Pass your first project review.', passedProjects >= 1);
-  add('portfolio', '💼', 'Portfolio Captain', 'Pass 5 portfolio projects.', passedProjects >= 5);
-  add('fullstack', '🥞', 'Full-Stack Forged', 'Conquer Frontend Forest and Backend Badlands.', done(completed, 'frontend') && done(completed, 'backend'));
-  add('container', '🐳', 'Containerized', 'Conquer Container Docks.', done(completed, 'docker'));
-  add('pipeline', '🟢', 'Green Pipeline', 'Conquer Pipeline Falls.', done(completed, 'cicd'));
-  add('cloud', '☁️', 'Cloud Walker', 'Conquer Cloud Citadel.', done(completed, 'cloud'));
-  add('guardian', '🛡️', 'Guardian', 'Conquer Security Bastion.', done(completed, 'security'));
-  add('polyglot', '🗣️', 'Polyglot', 'Conquer 2 language islands.', regionDone(completed, 'polyglot') >= 2);
-  add('stackmaster', '🧱', 'Stack Master', 'Conquer 2 stack islands.', regionDone(completed, 'stacks') >= 2);
-  add('ai-whisperer', '🔮', 'AI Whisperer', 'Conquer LLM Lighthouse.', done(completed, 'llm'));
-  add('agent', '🤖', 'Agent Architect', 'Conquer Agent Atoll.', done(completed, 'agents'));
+  add('first-island', '🗺️', 'Explorer', 'Clear your first area.', islandsDone >= 1);
+  add('perfect', '🎯', 'Critical Hit', 'Score 100% on a quiz.', quizAttempts.some((a) => a.score === 100));
+  add('quizmaster', '🧠', 'Sage of Trials', 'Pass 25 quizzes.', passedQuizzes >= 25);
+  add('shipwright', '⚔️', 'First Boss Down', 'Pass your first project review.', passedProjects >= 1);
+  add('portfolio', '💼', 'Guild Master', 'Pass 5 portfolio projects.', passedProjects >= 5);
+  add('fullstack', '🥞', 'Full-Stack Forged', 'Clear Frontend Forest and Backend Badlands.', done(completed, 'frontend') && done(completed, 'backend'));
+  add('container', '🐳', 'Containerized', 'Clear Container Quarry.', done(completed, 'docker'));
+  add('pipeline', '🟢', 'Green Pipeline', 'Clear Pipeline Falls.', done(completed, 'cicd'));
+  add('cloud', '☁️', 'Cloud Walker', 'Clear Cloud Citadel.', done(completed, 'cloud'));
+  add('guardian', '🛡️', 'Guardian', 'Clear Security Bastion.', done(completed, 'security'));
+  add('polyglot', '🗣️', 'Polyglot', 'Clear 2 areas in the Polyglot Kingdoms.', regionDone(completed, 'polyglot') >= 2);
+  add('stackmaster', '🧱', 'Stack Master', 'Clear 2 areas on the Stack Frontier.', regionDone(completed, 'stacks') >= 2);
+  add('ai-whisperer', '🔮', 'AI Whisperer', 'Clear Oracle Tower.', done(completed, 'llm'));
+  add('agent', '🤖', 'Agent Architect', 'Clear Agent Academy.', done(completed, 'agents'));
   add('streak7', '🔥', 'On Fire', 'Keep a 7-day streak.', s.best >= 7);
   add('streak30', '🌋', 'Unstoppable', 'Keep a 30-day streak.', s.best >= 30);
   add('scholar', '📚', 'Scholar', 'Log 10 hours of study.', minutes >= 600);
   add('sage', '🦉', 'Sage', 'Log 100 hours of study.', minutes >= 6000);
-  add('summit', '🏔️', 'Summit Reached', 'Conquer every core island.', regionDone(completed, 'core') === coreTotal);
-  add('legend', '👑', 'Odyssey Legend', 'Conquer every island in the archipelago.', islandsDone === ISLANDS.length);
+  add('summit', '🏔️', 'Summit Reached', 'Clear every area in the Heartlands.', regionDone(completed, 'core') === coreTotal);
+  add('legend', '👑', 'Living Legend', 'Clear every area in the realm.', islandsDone === ISLANDS.length);
 
   return list.map(({ test, ...b }) => ({ ...b, earned: test }));
 }

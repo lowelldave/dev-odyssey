@@ -22,14 +22,14 @@ export function levelInfo(xp: number) {
 }
 
 const TITLES: [number, string][] = [
-  [1, 'Deckhand'],
+  [1, 'Novice'],
   [4, 'Apprentice'],
-  [8, 'Journeyman Coder'],
-  [13, 'Artisan Developer'],
-  [19, 'Senior Navigator'],
-  [26, 'Architect'],
-  [34, 'Archmage of the Web'],
-  [43, 'Odyssey Legend'],
+  [8, 'Adventurer'],
+  [13, 'Knight of Code'],
+  [19, 'Paladin'],
+  [26, 'Archmage'],
+  [34, 'Hero of the Web'],
+  [43, 'Living Legend'],
 ];
 export const titleFor = (level: number) => [...TITLES].reverse().find(([l]) => level >= l)![1];
 

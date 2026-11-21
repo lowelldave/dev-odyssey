@@ -28,12 +28,12 @@ export default function QuestPage() {
   return (
     <div className="quest-page" style={{ ['--c' as string]: island.color }}>
       <Link to={`/island/${island.id}`} className="back">
-        ← {island.emoji} {island.name}
+        ◀ {island.emoji} {island.name}
       </Link>
 
-      <header className="quest-head">
+      <header className="quest-head window">
         <p className="eyebrow">
-          {quest.boss ? '🐉 Boss quest' : `Quest ${index + 1} of ${island.quests.length}`} · +{questXp(quest)} XP
+          {quest.boss ? '🐉 Boss battle' : `Quest ${index + 1} of ${island.quests.length}`} · +{questXp(quest)} EXP
         </p>
         <h1>{quest.title}</h1>
         <p className="lead">{quest.summary}</p>
@@ -54,7 +54,7 @@ export default function QuestPage() {
       <div className="quest-grid">
         <div className="quest-main">
           <section className="card">
-            <h2>📖 Briefing</h2>
+            <h2>📖 Quest briefing</h2>
             <ul className="lessons">
               {quest.lessons.map((l, i) => (
                 <li key={i}>{l}</li>
@@ -63,7 +63,7 @@ export default function QuestPage() {
           </section>
 
           <section className="card">
-            <h2>📚 Study scrolls</h2>
+            <h2>📚 Ancient tomes</h2>
             <ul className="resources">
               {quest.resources.map((r) => (
                 <li key={r.url}>
@@ -76,12 +76,12 @@ export default function QuestPage() {
           </section>
 
           <section className="card">
-            <h2>🛠️ Practice</h2>
+            <h2>🗡️ Training</h2>
             <p>{quest.practice}</p>
           </section>
 
-          <section className="card checkpoint">
-            <h2>{quest.checkpoint.type === 'quiz' ? '📜 Checkpoint quiz' : '🏗️ Project submission'}</h2>
+          <section className={`card checkpoint ${quest.boss ? 'boss-window' : ''}`}>
+            <h2>{quest.checkpoint.type === 'quiz' ? '⚔️ Trial: answer to advance' : '🐉 Boss battle: project review'}</h2>
             {quest.checkpoint.type === 'quiz' ? (
               <QuizRunner key={key} island={island} quest={quest} checkpoint={quest.checkpoint} />
             ) : (
@@ -93,7 +93,7 @@ export default function QuestPage() {
         <aside className="quest-side">
           <section className="card">
             <h3>⏱️ Study timer</h3>
-            <p className="muted small">Log focused time on this quest. It feeds your logbook and streak.</p>
+            <p className="muted small">Log focused time on this quest. It feeds your adventure log and streak.</p>
             {timing ? (
               <button className="btn btn-warn" onClick={stopTimer}>
                 Stop & log time
@@ -105,7 +105,7 @@ export default function QuestPage() {
             )}
           </section>
           <section className="card">
-            <h3>📝 Captain’s notes</h3>
+            <h3>📝 Adventurer’s journal</h3>
             <textarea
               className="notes"
               placeholder="What did you learn? Links, snippets, questions…"

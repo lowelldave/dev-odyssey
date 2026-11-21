@@ -33,8 +33,8 @@ if (import.meta.env.DEV) {
 }
 
 export const REGIONS: Record<Region, { name: string; desc: string; color: string }> = {
-  core: { name: 'The Core Archipelago', desc: 'The main voyage from web basics to production systems.', color: '#4fb3bf' },
-  polyglot: { name: 'Polyglot Isles', desc: 'Other languages and their flagship frameworks.', color: '#9b59b6' },
-  stacks: { name: 'Stack Isles', desc: 'Popular stack combinations, each built end to end.', color: '#e67e22' },
-  ai: { name: 'The AI Frontier', desc: 'AI from first principles to production agents.', color: '#d97757' },
+  core: { name: 'The Heartlands', desc: 'The main quest line, from web basics to production systems.', color: '#5fae4e' },
+  polyglot: { name: 'Polyglot Kingdoms', desc: 'Forest kingdoms of other languages and their flagship frameworks.', color: '#2f7d4f' },
+  stacks: { name: 'Stack Frontier', desc: 'Desert outposts where popular stacks are built end to end.', color: '#d39b3a' },
+  ai: { name: 'Arcane Highlands', desc: 'The magic of AI, from first principles to production agents.', color: '#8b6fd6' },
 };

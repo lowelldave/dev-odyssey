@@ -57,7 +57,7 @@ interface State {
 }
 
 const initial = {
-  name: 'Voyager',
+  name: 'Hero',
   avatar: '🧑‍💻',
   xp: 0,
   completed: {} as Completed,
@@ -153,7 +153,13 @@ export const useStore = create<State>()(
     }),
     {
       name: 'dev-odyssey-save',
-      version: 1,
+      version: 2,
+      // v2: adventure theme; the old sea-themed default name becomes "Hero"
+      migrate: (persisted, version) => {
+        const s = persisted as Partial<State>;
+        if (version < 2 && s.name === 'Voyager') s.name = 'Hero';
+        return s as State;
+      },
       partialize: ({ celebration: _c, ...rest }) => rest,
     },
   ),

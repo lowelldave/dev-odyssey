@@ -11,18 +11,18 @@ export default function Hud() {
   return (
     <header className="hud">
       <Link to="/" className="brand">
-        <span className="brand-icon">🧭</span>
+        <span className="brand-icon">⚔️</span>
         <span className="brand-name">Dev Odyssey</span>
       </Link>
       <nav className="hud-nav">
         <NavLink to="/" end>
-          🗺️ <span>Map</span>
+          🗺️ <span>World</span>
         </NavLink>
         <NavLink to="/dashboard">
-          📊 <span>Logbook</span>
+          📜 <span>Adventure Log</span>
         </NavLink>
         <NavLink to="/profile">
-          🎖️ <span>Profile</span>
+          🛡️ <span>Status</span>
         </NavLink>
       </nav>
       <div className="hud-stats">
@@ -33,7 +33,9 @@ export default function Hud() {
         <Link to="/profile" className="hud-player" title={`${name} — ${titleFor(lv.level)}`}>
           <span className="hud-avatar">{avatar}</span>
           <span className="hud-level">
-            <strong>Lv {lv.level}</strong>
+            <strong>
+              <em>LV</em> {lv.level} <span className="muted">EXP</span>
+            </strong>
             <span className="xpbar">
               <span style={{ width: `${Math.round(lv.progress * 100)}%` }} />
             </span>
