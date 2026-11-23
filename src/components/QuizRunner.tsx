@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { questKey } from '../lib/game';
+import { sfx } from '../lib/sound';
 import { useStore } from '../store';
 import type { Island, Quest, QuizCheckpoint } from '../types';
 
@@ -12,7 +14,17 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export default function QuizRunner({ island, quest, checkpoint }: { island: Island; quest: Quest; checkpoint: QuizCheckpoint }) {
+export default function QuizRunner({
+  island,
+  quest,
+  checkpoint,
+  next,
+}: {
+  island: Island;
+  quest: Quest;
+  checkpoint: QuizCheckpoint;
+  next: { href: string; label: string };
+}) {
   const [round, setRound] = useState(0);
   const questions = useMemo(
     () =>
@@ -37,7 +49,11 @@ export default function QuizRunner({ island, quest, checkpoint }: { island: Isla
   const submit = () => {
     setSubmitted(true);
     recordQuiz({ key: questKey(island.id, quest.id), score, passed });
-    if (passed) completeQuest(island.id, quest.id, { score });
+    if (passed) {
+      // first clear: the victory screen plays the fanfare; practice runs get a chime
+      if (alreadyDone) sfx('confirm');
+      completeQuest(island.id, quest.id, { score });
+    } else sfx('error');
   };
 
   const retry = () => {
@@ -88,10 +104,17 @@ export default function QuizRunner({ island, quest, checkpoint }: { island: Isla
           <strong>
             {passed ? '⚔️ Trial won!' : '💫 You were defeated…'} {correct}/{questions.length} correct ({score}%)
           </strong>
-          {!passed && <p>Rest, review the briefing and tomes, then challenge the trial again.</p>}
-          <button className="btn" onClick={retry}>
-            {passed ? 'Practice again' : 'Retry trial'}
-          </button>
+          {!passed && <p>Rest, review the tutorial steps above, then challenge the trial again.</p>}
+          <div className="btn-row">
+            {passed && (
+              <Link className="btn btn-primary" to={next.href} data-sfx="confirm">
+                ▶ {next.label}
+              </Link>
+            )}
+            <button className="btn" onClick={retry}>
+              {passed ? 'Practice again' : 'Retry trial'}
+            </button>
+          </div>
         </div>
       )}
     </div>

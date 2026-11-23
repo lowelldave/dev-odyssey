@@ -20,6 +20,8 @@ export interface Submission {
 }
 
 export interface Celebration {
+  islandId: string;
+  questId: string;
   questTitle: string;
   xp: number;
   islandCompleted?: Island;
@@ -40,7 +42,12 @@ interface State {
   githubToken: string;
   timer: { key: string; startedAt: number } | null;
   celebration: Celebration | null;
+  sound: boolean;
+  /** areas whose purification animation has already played on the map */
+  purifiedSeen: Record<string, true>;
 
+  setSound: (on: boolean) => void;
+  markPurified: (ids: string[]) => void;
   setProfile: (p: { name?: string; avatar?: string }) => void;
   setToken: (t: string) => void;
   setNote: (key: string, text: string) => void;
@@ -68,6 +75,8 @@ const initial = {
   githubToken: '',
   timer: null,
   celebration: null,
+  sound: true,
+  purifiedSeen: {} as Record<string, true>,
 };
 
 const bump = (activity: Record<string, number>, minutes = 0) => {
@@ -80,6 +89,8 @@ export const useStore = create<State>()(
     (set, get) => ({
       ...initial,
 
+      setSound: (sound) => set({ sound }),
+      markPurified: (ids) => set((s) => ({ purifiedSeen: { ...s.purifiedSeen, ...Object.fromEntries(ids.map((id) => [id, true as const])) } })),
       setProfile: (p) => set(p),
       setToken: (githubToken) => set({ githubToken: githubToken.trim() }),
       setNote: (key, text) => set((s) => ({ notes: { ...s.notes, [key]: text } })),
@@ -120,6 +131,8 @@ export const useStore = create<State>()(
           xp: s.xp + gained,
           activity: bump(s.activity),
           celebration: {
+            islandId,
+            questId,
             questTitle: quest.title,
             xp: gained,
             islandCompleted,
@@ -149,7 +162,7 @@ export const useStore = create<State>()(
         }
         set({ ...initial, ...data, timer: null, celebration: null });
       },
-      reset: () => set({ ...initial }),
+      reset: () => set((s) => ({ ...initial, sound: s.sound })),
     }),
     {
       name: 'dev-odyssey-save',

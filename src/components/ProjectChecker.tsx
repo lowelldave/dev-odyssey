@@ -2,10 +2,22 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type CheckReport, parseRepoUrl, runProjectCheck } from '../lib/github';
 import { questKey } from '../lib/game';
+import { sfx } from '../lib/sound';
 import { useStore } from '../store';
 import type { Island, ProjectCheckpoint, Quest } from '../types';
 
-export default function ProjectChecker({ island, quest, checkpoint }: { island: Island; quest: Quest; checkpoint: ProjectCheckpoint }) {
+export default function ProjectChecker({
+  island,
+  quest,
+  checkpoint,
+  next,
+}: {
+  island: Island;
+  quest: Quest;
+  checkpoint: ProjectCheckpoint;
+  next: { href: string; label: string };
+}) {
+  const alreadyDone = useStore((s) => !!s.completed[questKey(island.id, quest.id)]);
   const key = questKey(island.id, quest.id);
   const lastSubmission = useStore((s) => [...s.submissions].reverse().find((x) => x.key === key));
   const token = useStore((s) => s.githubToken);
@@ -26,7 +38,10 @@ export default function ProjectChecker({ island, quest, checkpoint }: { island: 
       const rep = await runProjectCheck(url, checkpoint, token, setProgress);
       setReport(rep);
       recordSubmission({ key, repo: rep.repo, score: rep.score, passed: rep.passed });
-      if (rep.passed) completeQuest(island.id, quest.id, { score: rep.score, repo: rep.repo });
+      if (rep.passed) {
+        if (alreadyDone) sfx('confirm');
+        completeQuest(island.id, quest.id, { score: rep.score, repo: rep.repo });
+      } else sfx('error');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -124,7 +139,13 @@ export default function ProjectChecker({ island, quest, checkpoint }: { island: 
               </li>
             ))}
           </ul>
-          {!report.passed && <p>Fix the ❌ items, push your changes, then run the checks again.</p>}
+          {report.passed ? (
+            <Link className="btn btn-primary" to={next.href} data-sfx="confirm">
+              ▶ {next.label}
+            </Link>
+          ) : (
+            <p>Fix the ❌ items, push your changes, then run the checks again.</p>
+          )}
         </div>
       )}
     </div>

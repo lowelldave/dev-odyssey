@@ -1,6 +1,8 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import ProjectChecker from '../components/ProjectChecker';
 import QuizRunner from '../components/QuizRunner';
+import Paper from '../components/Paper';
+import TutorialView from '../components/TutorialView';
 import { ISLAND_MAP } from '../data';
 import { isQuestUnlocked, questKey, questXp } from '../lib/game';
 import { useStore } from '../store';
@@ -22,48 +24,82 @@ export default function QuestPage() {
   if (!isQuestUnlocked(completed, island, index)) return <Navigate to={`/island/${island.id}`} replace />;
 
   const done = completed[key];
-  const next = island.quests[index + 1];
-  const timing = timer?.key === key;
+  const nextQuest = island.quests[index + 1];
+  const next = nextQuest
+    ? { href: `/island/${island.id}/quest/${nextQuest.id}`, label: `Next quest: ${nextQuest.title}` }
+    : { href: `/island/${island.id}`, label: 'Back to the quest board' };
+
+  // timer can be running here, on another quest, or not at all
+  const timerHere = timer?.key === key;
+  const otherQuest = timer && !timerHere ? describeQuest(timer.key) : null;
+
+  const tutorial = quest.tutorial;
 
   return (
     <div className="quest-page" style={{ ['--c' as string]: island.color }}>
-      <Link to={`/island/${island.id}`} className="back">
-        ◀ {island.emoji} {island.name}
+      <Link to={`/island/${island.id}`} className="back" data-sfx="back">
+        ◀ {island.emoji} {island.name} quest board
       </Link>
 
-      <header className="quest-head window">
+      <header className="quest-head window paper">
+        <Paper tape="both" />
         <p className="eyebrow">
           {quest.boss ? '🐉 Boss battle' : `Quest ${index + 1} of ${island.quests.length}`} · +{questXp(quest)} EXP
+          {tutorial && ` · ${tutorial.steps.length}-step ${quest.boss ? 'guided project' : 'tutorial'}`}
         </p>
         <h1>{quest.title}</h1>
         <p className="lead">{quest.summary}</p>
         {done && (
-          <p className="done-banner">
-            ✅ Completed {new Date(done.at).toLocaleDateString()}
-            {done.score !== undefined && ` · score ${done.score}%`}
-            {next && (
-              <>
-                {' · '}
-                <Link to={`/island/${island.id}/quest/${next.id}`}>Next: {next.title} →</Link>
-              </>
-            )}
-          </p>
+          <div className="done-row">
+            <p className="done-banner">
+              ✅ Cleared {new Date(done.at).toLocaleDateString()}
+              {done.score !== undefined && ` · score ${done.score}%`}
+            </p>
+            <Link className="btn btn-primary" to={next.href} data-sfx="confirm">
+              ▶ {next.label}
+            </Link>
+          </div>
         )}
       </header>
 
       <div className="quest-grid">
         <div className="quest-main">
-          <section className="card">
-            <h2>📖 Quest briefing</h2>
-            <ul className="lessons">
-              {quest.lessons.map((l, i) => (
-                <li key={i}>{l}</li>
-              ))}
-            </ul>
+          {tutorial ? (
+            <TutorialView tutorial={tutorial} />
+          ) : (
+            <>
+              <section className="card paper">
+                <Paper tape="left" />
+                <h2>📖 Quest briefing</h2>
+                <ul className="lessons">
+                  {quest.lessons.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              </section>
+              <section className="card paper">
+                <Paper tape="right" />
+                <h2>🗡️ Training</h2>
+                <p>{quest.practice}</p>
+              </section>
+            </>
+          )}
+
+          <section id="checkpoint" className={`card paper checkpoint ${quest.boss ? 'boss-window' : ''}`}>
+            <Paper tape="left" seal={quest.boss ? 'gold' : 'red'} />
+            <p className="eyebrow">{tutorial ? 'Final step' : 'Checkpoint'}</p>
+            <h2>{quest.checkpoint.type === 'quiz' ? '⚔️ Trial: prove what you learned' : '🐉 Boss battle: project review'}</h2>
+            {quest.checkpoint.type === 'quiz' ? (
+              <QuizRunner key={key} island={island} quest={quest} checkpoint={quest.checkpoint} next={next} />
+            ) : (
+              <ProjectChecker key={key} island={island} quest={quest} checkpoint={quest.checkpoint} next={next} />
+            )}
           </section>
 
-          <section className="card">
+          <section className="card paper">
+            <Paper tape="right" />
             <h2>📚 Ancient tomes</h2>
+            <p className="muted small">Go deeper with these free references.</p>
             <ul className="resources">
               {quest.resources.map((r) => (
                 <li key={r.url}>
@@ -74,37 +110,45 @@ export default function QuestPage() {
               ))}
             </ul>
           </section>
-
-          <section className="card">
-            <h2>🗡️ Training</h2>
-            <p>{quest.practice}</p>
-          </section>
-
-          <section className={`card checkpoint ${quest.boss ? 'boss-window' : ''}`}>
-            <h2>{quest.checkpoint.type === 'quiz' ? '⚔️ Trial: answer to advance' : '🐉 Boss battle: project review'}</h2>
-            {quest.checkpoint.type === 'quiz' ? (
-              <QuizRunner key={key} island={island} quest={quest} checkpoint={quest.checkpoint} />
-            ) : (
-              <ProjectChecker key={key} island={island} quest={quest} checkpoint={quest.checkpoint} />
-            )}
-          </section>
         </div>
 
         <aside className="quest-side">
-          <section className="card">
+          <section className="card paper">
+            <Paper tape="right" />
             <h3>⏱️ Study timer</h3>
-            <p className="muted small">Log focused time on this quest. It feeds your adventure log and streak.</p>
-            {timing ? (
-              <button className="btn btn-warn" onClick={stopTimer}>
-                Stop & log time
-              </button>
+            {timerHere ? (
+              <>
+                <p className="muted small">The timer is running for this quest.</p>
+                <button className="btn btn-warn" onClick={stopTimer}>
+                  ■ Stop & log time
+                </button>
+              </>
+            ) : otherQuest ? (
+              <>
+                <p className="muted small">
+                  A timer is already running for{' '}
+                  {otherQuest.href ? <Link to={otherQuest.href}>{otherQuest.title}</Link> : otherQuest.title}.
+                </p>
+                <div className="btn-col">
+                  <button className="btn" onClick={() => startTimer(key)} title="Logs the time so far, then starts timing this quest">
+                    ⇄ Switch to this quest
+                  </button>
+                  <button className="btn btn-warn" onClick={stopTimer}>
+                    ■ Stop & log time
+                  </button>
+                </div>
+              </>
             ) : (
-              <button className="btn" onClick={() => startTimer(key)}>
-                ▶ Start timer
-              </button>
+              <>
+                <p className="muted small">Log focused time on this quest. It feeds your adventure log and streak.</p>
+                <button className="btn" onClick={() => startTimer(key)}>
+                  ▶ Start timer
+                </button>
+              </>
             )}
           </section>
-          <section className="card">
+          <section className="card paper">
+            <Paper tape="left" />
             <h3>📝 Adventurer’s journal</h3>
             <textarea
               className="notes"
@@ -119,4 +163,10 @@ export default function QuestPage() {
       </div>
     </div>
   );
+}
+
+function describeQuest(key: string) {
+  const [iid, qid] = key.split('/');
+  const quest = ISLAND_MAP[iid]?.quests.find((q) => q.id === qid);
+  return quest ? { title: quest.title, href: `/island/${iid}/quest/${qid}` } : { title: 'another quest', href: '' };
 }

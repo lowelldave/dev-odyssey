@@ -4,7 +4,7 @@ import { levelInfo, streak, titleFor } from '../lib/game';
 import { useStore } from '../store';
 
 export default function Hud() {
-  const { xp, avatar, name, activity, timer, stopTimer } = useStore();
+  const { xp, avatar, name, activity, timer, stopTimer, sound, setSound } = useStore();
   const lv = levelInfo(xp);
   const st = streak(activity);
 
@@ -27,6 +27,16 @@ export default function Hud() {
       </nav>
       <div className="hud-stats">
         {timer && <TimerChip startedAt={timer.startedAt} onStop={stopTimer} />}
+        <button
+          className="chip chip-btn"
+          data-sfx="toggle"
+          onClick={() => setSound(!sound)}
+          aria-pressed={sound}
+          aria-label={sound ? 'Mute sound effects' : 'Turn sound effects on'}
+          title={sound ? 'Sound on (click to mute)' : 'Sound off (click to unmute)'}
+        >
+          {sound ? '🔊' : '🔇'}
+        </button>
         <span className="chip" title={`Current streak: ${st.current} days (best ${st.best})`}>
           🔥 {st.current}
         </span>

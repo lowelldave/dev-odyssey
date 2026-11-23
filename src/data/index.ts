@@ -3,8 +3,23 @@ import { AI } from './ai';
 import { CORE } from './core';
 import { POLYGLOT } from './polyglot';
 import { STACKS } from './stacks';
+import { TUTORIALS } from './tutorials';
 
-export const ISLANDS: Island[] = [...CORE, ...POLYGLOT, ...STACKS, ...AI];
+/** Attach step-by-step tutorials; a tutorial's quiz replaces the original questions. */
+function withTutorials(islands: Island[]): Island[] {
+  return islands.map((island) => ({
+    ...island,
+    quests: island.quests.map((quest) => {
+      const tutorial = TUTORIALS[`${island.id}/${quest.id}`];
+      if (!tutorial) return quest;
+      const checkpoint =
+        tutorial.quiz && quest.checkpoint.type === 'quiz' ? { ...quest.checkpoint, questions: tutorial.quiz } : quest.checkpoint;
+      return { ...quest, tutorial, checkpoint };
+    }),
+  }));
+}
+
+export const ISLANDS: Island[] = withTutorials([...CORE, ...POLYGLOT, ...STACKS, ...AI]);
 
 export const ISLAND_MAP: Record<string, Island> = Object.fromEntries(ISLANDS.map((i) => [i.id, i]));
 
@@ -27,6 +42,10 @@ if (import.meta.env.DEV) {
       }
     });
     if (!island.quests.at(-1)?.boss) problems.push(`${island.id}: last quest should be a boss`);
+  }
+  for (const key of Object.keys(TUTORIALS)) {
+    const [iid, qid] = key.split('/');
+    if (!ISLAND_MAP[iid]?.quests.some((q) => q.id === qid)) problems.push(`tutorial for unknown quest ${key}`);
   }
   if (problems.length) console.error('[dev-odyssey] content problems:\n' + problems.join('\n'));
   else console.info(`[dev-odyssey] content OK: ${ISLANDS.length} islands`);

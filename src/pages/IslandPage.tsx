@@ -1,6 +1,10 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { AreaScene, SceneDefs } from '../components/AreaScene';
+import { LANDMARK_HEIGHT, landmarkOf } from '../components/Overworld';
+import QuestBoard from '../components/QuestBoard';
 import { ISLAND_MAP, REGIONS } from '../data';
-import { isIslandComplete, isQuestDone, isQuestUnlocked, islandDoneCount, islandState, questXp } from '../lib/game';
+import { monstersOf } from '../data/monsters';
+import { isIslandComplete, isQuestDone, islandDoneCount, islandState } from '../lib/game';
 import { useStore } from '../store';
 
 export default function IslandPage() {
@@ -11,7 +15,8 @@ export default function IslandPage() {
 
   const state = islandState(completed, island);
   const done = islandDoneCount(completed, island);
-  const leadsTo = Object.values(ISLAND_MAP).filter((i) => i.requires.includes(island.id));
+  const mons = monstersOf(island.id);
+  const leadsTo =Object.values(ISLAND_MAP).filter((i) => i.requires.includes(island.id));
 
   return (
     <div className="island-page" style={{ ['--c' as string]: island.color }}>
@@ -19,7 +24,17 @@ export default function IslandPage() {
         ◀ Back to world map
       </Link>
       <section className="island-hero window">
-        <div className="island-hero-emoji">{island.emoji}</div>
+        <svg
+          className="island-hero-scene"
+          viewBox={`-150 ${-LANDMARK_HEIGHT[landmarkOf(island)] - 120} 300 ${LANDMARK_HEIGHT[landmarkOf(island)] + 195}`}
+          role="img"
+          aria-label={`${island.name}: ${state === 'complete' ? 'purified' : state === 'locked' ? 'shrouded in fog' : 'corrupted by monsters'}`}
+        >
+          <defs>
+            <SceneDefs />
+          </defs>
+          <AreaScene island={island} completed={completed} />
+        </svg>
         <div>
           <p className="eyebrow">
             {REGIONS[island.region].name} · {island.tier}
@@ -44,6 +59,22 @@ export default function IslandPage() {
               {done}/{island.quests.length} quests
             </span>
           </div>
+          {state !== 'locked' && (
+            <div className="bestiary">
+              <span className="eyebrow">{state === 'complete' ? 'Defeated here' : 'Monsters here'}</span>
+              <div className="chips">
+                {island.quests.map((q) => {
+                  const beaten = isQuestDone(completed, island.id, q.id);
+                  const name = q.boss ? mons.boss.name : mons.minion.name;
+                  return (
+                    <span key={q.id} className={`chip monster-chip ${beaten ? 'beaten' : ''} ${q.boss ? 'boss' : ''}`} title={`Guarding: ${q.title}`}>
+                      {beaten ? '💀' : q.boss ? '👑' : '👾'} {name}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -65,44 +96,7 @@ export default function IslandPage() {
         </div>
       )}
 
-      <section className="trail">
-        <h2>Quest board</h2>
-        <ol className="trail-list">
-          {island.quests.map((quest, i) => {
-            const qDone = isQuestDone(completed, island.id, quest.id);
-            const unlocked = isQuestUnlocked(completed, island, i);
-            const kind = quest.checkpoint.type === 'quiz' ? 'Trial' : 'Project';
-            const icon = qDone ? '✅' : !unlocked ? '🔒' : quest.boss ? '🐉' : quest.checkpoint.type === 'quiz' ? '📜' : '🛠️';
-            const inner = (
-              <>
-                <span className="trail-node">{icon}</span>
-                <span className="trail-body">
-                  <span className="trail-top">
-                    <span className="eyebrow">{quest.boss ? 'Boss battle' : `Quest ${i + 1}`}</span>
-                    <span className={`tag tag-${quest.checkpoint.type}`}>{kind}</span>
-                    <span className="tag tag-xp">+{questXp(quest)} EXP</span>
-                  </span>
-                  <strong>{quest.title}</strong>
-                  <span className="muted small">{quest.summary}</span>
-                </span>
-              </>
-            );
-            return (
-              <li key={quest.id} className={`trail-item ${i % 2 ? 'right' : 'left'} ${qDone ? 'done' : ''} ${quest.boss ? 'boss' : ''}`}>
-                {unlocked ? (
-                  <Link to={`/island/${island.id}/quest/${quest.id}`} className="trail-card window">
-                    {inner}
-                  </Link>
-                ) : (
-                  <div className="trail-card window disabled" aria-disabled>
-                    {inner}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </section>
+      <QuestBoard island={island} completed={completed} />
 
       {leadsTo.length > 0 && (
         <section className="leads-to window">

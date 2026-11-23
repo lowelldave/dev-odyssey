@@ -43,6 +43,25 @@ export interface ProjectCheckpoint {
 
 export type Checkpoint = QuizCheckpoint | ProjectCheckpoint;
 
+export interface TutorialStep {
+  title: string;
+  /** Short paragraphs separated by blank lines; `inline code` is supported. */
+  body: string;
+  code?: { lang: string; src: string; caption?: string };
+  /** A small hands-on task for this step. */
+  tryIt?: string;
+}
+
+export interface Tutorial {
+  /** One or two sentences: what you will be able to do afterwards. */
+  goal: string;
+  steps: TutorialStep[];
+  mistakes?: string[];
+  recap?: string[];
+  /** Replaces the quest's original quiz questions (tutorial quests end with 5). */
+  quiz?: QuizQuestion[];
+}
+
 export interface Quest {
   id: string;
   title: string;
@@ -52,6 +71,7 @@ export interface Quest {
   practice: string;
   checkpoint: Checkpoint;
   boss?: boolean;
+  tutorial?: Tutorial;
 }
 
 export interface Island {

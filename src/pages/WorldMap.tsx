@@ -1,20 +1,41 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Decoration, Hero, LANDMARK_HEIGHT, LandmarkSprite, WORLD, coastline, landmarkOf, scatterDecorations } from '../components/Overworld';
+import { AreaScene, PLOT, SceneDefs, sceneInfo } from '../components/AreaScene';
+import {
+  Decoration,
+  Hero,
+  LANDMARK_HEIGHT,
+  SCREEN,
+  WS,
+  continentPath,
+  corruptKind,
+  isoEllipse,
+  landmarkOf,
+  layoutPositions,
+  project,
+  scatterDecorations,
+} from '../components/Overworld';
+import { sfx } from '../lib/sound';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
 import { type IslandState, TOTAL_QUESTS, islandDoneCount, islandState, nextQuests } from '../lib/game';
 import { useStore } from '../store';
 import type { Island, Region } from '../types';
 
-const { W, H } = WORLD;
-const DEFAULT_SCALE = 0.8;
+/** Camera works in projected screen space. */
+const { W, H } = SCREEN;
+const DEFAULT_SCALE = 0.7;
 const MAX_SCALE = 1.6;
 
+/** World-space positions (with the natural jitter) and their projected screen points. */
+const POS = layoutPositions(ISLANDS);
+const SP: Record<string, { x: number; y: number }> = Object.fromEntries(Object.entries(POS).map(([id, p]) => [id, project(p.x, p.y)]));
+
+/** Land banners float just off each land's coast (world space, outside the continent). */
 const REGION_LABELS: { region: Region; x: number; y: number }[] = [
-  { region: 'ai', x: 1700, y: 90 },
-  { region: 'polyglot', x: 320, y: 640 },
-  { region: 'stacks', x: 2450, y: 650 },
-  { region: 'core', x: 1380, y: 1855 },
+  { region: 'ai', x: 1650 * WS, y: -110 * WS },
+  { region: 'polyglot', x: -110 * WS, y: 1050 * WS },
+  { region: 'stacks', x: 2910 * WS, y: 1250 * WS },
+  { region: 'core', x: 1450 * WS, y: 2150 * WS },
 ];
 
 const STATE_LABEL: Record<IslandState, string> = {
@@ -24,13 +45,27 @@ const STATE_LABEL: Record<IslandState, string> = {
   complete: 'Cleared',
 };
 
-/** Road between two areas as a gentle curve. */
+/** Road between two areas: a gentle curve in world space, sampled and projected. */
 function roadPath(a: Island, b: Island) {
-  const { x: x1, y: y1 } = a.pos;
-  const { x: x2, y: y2 } = b.pos;
-  const mx = (x1 + x2) / 2 + (y2 - y1) * 0.12;
-  const my = (y1 + y2) / 2 - (x2 - x1) * 0.12;
-  return { d: `M${x1},${y1} Q${mx},${my} ${x2},${y2}`, x1, y1, mx, my, x2, y2 };
+  const { x: x1, y: y1 } = POS[a.id];
+  const { x: x2, y: y2 } = POS[b.id];
+  const mx = (x1 + x2) / 2 + (y2 - y1) * 0.14;
+  const my = (y1 + y2) / 2 - (x2 - x1) * 0.14;
+  const world: { x: number; y: number }[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    world.push({
+      x: (1 - t) ** 2 * x1 + 2 * (1 - t) * t * mx + t ** 2 * x2,
+      y: (1 - t) ** 2 * y1 + 2 * (1 - t) * t * my + t ** 2 * y2,
+    });
+  }
+  const d = world
+    .map((p, i) => {
+      const s = project(p.x, p.y);
+      return `${i ? 'L' : 'M'}${s.x.toFixed(1)},${s.y.toFixed(1)}`;
+    })
+    .join(' ');
+  return { d, world };
 }
 
 const ROADS = ISLANDS.flatMap((island) =>
@@ -113,21 +148,50 @@ function MapView({ heroAt }: { heroAt: Island }) {
   const [hover, setHover] = useState<string | null>(null);
 
   const states = useMemo(() => Object.fromEntries(ISLANDS.map((i) => [i.id, islandState(completed, i)])), [completed]);
+  const infos = useMemo(() => Object.fromEntries(ISLANDS.map((i) => [i.id, sceneInfo(i, completed)])), [completed]);
 
   const decorations = useMemo(() => {
-    const avoid: { x: number; y: number; r: number }[] = ISLANDS.map((i) => ({ x: i.pos.x, y: i.pos.y + 20, r: 110 }));
-    for (const r of ROADS) {
-      for (let t = 0; t <= 1; t += 0.05) {
-        const x = (1 - t) ** 2 * r.x1 + 2 * (1 - t) * t * r.mx + t ** 2 * r.x2;
-        const y = (1 - t) ** 2 * r.y1 + 2 * (1 - t) * t * r.my + t ** 2 * r.y2;
-        avoid.push({ x, y: y + 10, r: 34 });
-      }
-    }
-    for (const l of REGION_LABELS) avoid.push({ x: l.x, y: l.y + 10, r: 120 });
-    return scatterDecorations(W, H, avoid);
+    // keep scenery off each area's plot, its label, the roads and the banners
+    const avoid: { x: number; y: number; r: number }[] = ISLANDS.map((i) => ({ ...POS[i.id], r: 235 }));
+    // labels sit below each area on screen, which is +x/+y in world space
+    for (const i of ISLANDS) avoid.push({ x: POS[i.id].x + 150, y: POS[i.id].y + 150, r: 130 });
+    for (const r of ROADS) for (const p of r.world) avoid.push({ ...p, r: 46 });
+    for (const l of REGION_LABELS) avoid.push({ x: l.x, y: l.y, r: 260 });
+    return scatterDecorations(
+      avoid,
+      ISLANDS.map((i) => ({ id: i.id, ...POS[i.id] })),
+    );
   }, []);
 
-  const continent = useMemo(() => coastline(34, 24, W - 68, H - 48, 22, 'continent'), []);
+  const continent = useMemo(() => continentPath(50, 40, 'continent'), []);
+  const biomes = useMemo(
+    () => ({
+      polyglot: isoEllipse(280 * WS, 1250 * WS, 440 * WS, 900 * WS),
+      stacks: isoEllipse(2470 * WS, 1260 * WS, 440 * WS, 720 * WS),
+      ai: isoEllipse(1550 * WS, 250 * WS, 1150 * WS, 360 * WS),
+    }),
+    [],
+  );
+  const heroSP = SP[heroAt.id];
+
+  /* ---------- purification: plays once per area, the first time the map sees it cleared ---------- */
+  const seen = useStore((s) => s.purifiedSeen);
+  const markPurified = useStore((s) => s.markPurified);
+  const [purifying, setPurifying] = useState<string[]>([]);
+  const [firstFresh] = useState(() => ISLANDS.find((i) => states[i.id] === 'complete' && !seen[i.id])?.id);
+  useEffect(() => {
+    const fresh = ISLANDS.filter((i) => states[i.id] === 'complete' && !seen[i.id]).map((i) => i.id);
+    if (!fresh.length) return;
+    setPurifying(fresh);
+    markPurified(fresh);
+    const chime = setTimeout(() => sfx('purify'), 250);
+    const done = setTimeout(() => setPurifying([]), 2800);
+    return () => {
+      clearTimeout(chime);
+      clearTimeout(done);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [states]);
 
   /* ---------- camera: drag to pan, zoom with buttons / ctrl+wheel / keys ---------- */
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -170,8 +234,9 @@ function MapView({ heroAt }: { heroAt: Island }) {
   // first layout: start on the hero; afterwards re-clamp when the viewport resizes
   useEffect(() => {
     if (!size.w) return;
-    setCam((c) => clamp(c ?? { cx: heroAt.pos.x, cy: heroAt.pos.y - 80, scale: DEFAULT_SCALE }));
-  }, [size.w, size.h, clamp, heroAt]);
+    const focus = firstFresh ? SP[firstFresh] : heroSP;
+    setCam((c) => clamp(c ?? { cx: focus.x, cy: focus.y - 80, scale: DEFAULT_SCALE }));
+  }, [size.w, size.h, clamp, heroSP, firstFresh]);
 
   const zoomAt = useCallback(
     (factor: number, mx?: number, my?: number) => {
@@ -248,7 +313,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
     if (!cam) return;
     const vw = size.w / cam.scale;
     const vh = size.h / cam.scale;
-    const { x, y } = island.pos;
+    const { x, y } = SP[island.id];
     if (Math.abs(x - cam.cx) > vw / 2 - 120 || Math.abs(y - cam.cy) > vh / 2 - 120) centerOn(x, y);
   };
 
@@ -283,7 +348,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
         <button className="map-btn" onClick={() => centerOn(W / 2, H / 2, minScale)} aria-label="Show whole world" title="Show whole world">
           ⤢
         </button>
-        <button className="map-btn" onClick={() => centerOn(heroAt.pos.x, heroAt.pos.y - 80, Math.max(cam?.scale ?? 0, DEFAULT_SCALE))} aria-label="Find hero" title="Find your hero">
+        <button className="map-btn" onClick={() => centerOn(heroSP.x, heroSP.y - 80, Math.max(cam?.scale ?? 0, DEFAULT_SCALE))} aria-label="Find hero" title="Find your hero">
           📍
         </button>
       </div>
@@ -293,33 +358,60 @@ function MapView({ heroAt }: { heroAt: Island }) {
           <pattern id="sea-waves" width="90" height="40" patternUnits="userSpaceOnUse">
             <path d="M8 22 q8 -8 16 0 q8 8 16 0" fill="none" stroke="#bfe6ff" strokeOpacity="0.55" strokeWidth="2.5" />
           </pattern>
-          <pattern id="grass" width="48" height="48" patternUnits="userSpaceOnUse">
-            <path d="M10 30 l3 -7 l3 7 M32 12 l3 -7 l3 7" fill="none" stroke="#5e9f45" strokeOpacity="0.45" strokeWidth="2" />
+          <pattern id="iso-grid" width="72" height="36" patternUnits="userSpaceOnUse">
+            <path d="M0 18 L36 0 L72 18 L36 36 Z" fill="none" stroke="#ffffff" strokeOpacity="0.09" strokeWidth="1.2" />
           </pattern>
+          <pattern id="grass" width="60" height="44" patternUnits="userSpaceOnUse">
+            <path d="M12 30 l3 -7 l3 7 M40 14 l3 -7 l3 7" fill="none" stroke="#3f7d2f" strokeOpacity="0.28" strokeWidth="2" />
+          </pattern>
+          <linearGradient id="sea-depth" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#4c9ad6" />
+            <stop offset="1" stopColor="#2f6fb0" />
+          </linearGradient>
           <filter id="blur-xl" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="38" />
           </filter>
-          <filter id="sealed">
-            <feColorMatrix type="matrix" values="0.2 0.2 0.2 0 0.02  0.2 0.2 0.25 0 0.03  0.25 0.25 0.3 0 0.08  0 0 0 1 0" />
-          </filter>
-          <filter id="fog" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" />
-          </filter>
+          <SceneDefs />
           <clipPath id="land-clip">
             <path d={continent} />
           </clipPath>
         </defs>
 
-        {/* sea and continent */}
-        <rect width={W} height={H} fill="#3d86c6" />
-        <rect width={W} height={H} fill="url(#sea-waves)" />
-        <path d={continent} fill="#e8d39a" stroke="#b89b5e" strokeWidth="6" transform="translate(0,6)" />
+        {/* sea, then the continent as a raised plateau with layered cliffs */}
+        <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="#3f86c6" />
+        <rect width={W} height={H} fill="url(#sea-depth)" />
+        <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#sea-waves)" />
+        <path d={continent} fill="#2a5f96" opacity="0.45" transform="translate(14,70)" />
+        <path d={continent} fill="#6b4524" transform="translate(0,52)" />
+        <path d={continent} fill="#8a5a2e" transform="translate(0,34)" />
+        <path d={continent} fill="#a7733f" transform="translate(0,16)" />
+        <path d={continent} fill="#e8d39a" transform="translate(0,6)" />
         <path d={continent} fill="#8fcb68" />
         <g clipPath="url(#land-clip)">
-          <ellipse cx="300" cy="1250" rx="420" ry="900" fill="#3f8a45" filter="url(#blur-xl)" />
-          <ellipse cx="2470" cy="1260" rx="430" ry="720" fill="#e3c98a" filter="url(#blur-xl)" />
-          <ellipse cx="1550" cy="250" rx="1100" ry="340" fill="#a497cc" filter="url(#blur-xl)" />
+          <path d={biomes.polyglot} fill="#3f8a45" filter="url(#blur-xl)" />
+          <path d={biomes.stacks} fill="#e3c98a" filter="url(#blur-xl)" />
+          <path d={biomes.ai} fill="#a497cc" filter="url(#blur-xl)" />
           <rect width={W} height={H} fill="url(#grass)" />
+          <rect width={W} height={H} fill="url(#iso-grid)" />
+          {/* corruption spreading from every area that is not yet purified */}
+          {ISLANDS.map((i) => {
+            const info = infos[i.id];
+            const fading = purifying.includes(i.id);
+            if (info.level === 0 && !fading) return null;
+            const strength = fading ? 0.95 : info.level === 4 ? 1 : 0.35 + (1 - info.done / info.total) * 0.65;
+            return (
+              <ellipse
+                key={i.id}
+                cx={SP[i.id].x}
+                cy={SP[i.id].y}
+                rx={520}
+                ry={260}
+                fill="url(#blight-grad)"
+                opacity={strength}
+                className={fading ? 'blight-fade' : undefined}
+              />
+            );
+          })}
         </g>
 
         {/* roads */}
@@ -342,15 +434,19 @@ function MapView({ heroAt }: { heroAt: Island }) {
 
         {/* scenery */}
         <g className="scenery" aria-hidden>
-          {decorations.map((d, i) => (
-            <Decoration key={i} {...d} />
-          ))}
+          {decorations.map((d, i) => {
+            const info = d.near ? infos[d.near] : undefined;
+            const progress = !info ? 1 : info.level === 4 ? 0 : info.done / info.total;
+            const blighted = !!info && info.level !== 0 && d.roll >= progress;
+            return <Decoration key={i} kind={blighted ? corruptKind(d.kind) : d.kind} x={d.x} y={d.y} s={d.s} />;
+          })}
         </g>
 
         {/* land banners */}
-        {REGION_LABELS.map(({ region, x, y }) => {
+        {REGION_LABELS.map(({ region, x: wx, y: wy }) => {
           const label = REGIONS[region].name.toUpperCase();
           const w = label.length * 21 + 50;
+          const { x, y } = project(wx, wy);
           return (
             <g key={region} transform={`translate(${x},${y})`} className="region-banner">
               <path d={`M${-w / 2 - 22},-6 L${-w / 2},-20 L${-w / 2},16 Z M${w / 2 + 22},-6 L${w / 2},-20 L${w / 2},16 Z`} fill="#c9a86a" stroke="#5c4124" strokeWidth="3" />
@@ -364,20 +460,22 @@ function MapView({ heroAt }: { heroAt: Island }) {
 
         {/* areas, back to front */}
         {[...ISLANDS]
-          .sort((a, b) => a.pos.y - b.pos.y)
+          .sort((a, b) => SP[a.id].y - SP[b.id].y)
           .map((island) => (
             <AreaNode
               key={island.id}
               island={island}
+              at={SP[island.id]}
               state={states[island.id]}
               done={islandDoneCount(completed, island)}
+              purifying={purifying.includes(island.id)}
               onHover={setHover}
               onOpen={() => navigate(`/island/${island.id}`)}
               onFocus={() => revealArea(island)}
             />
           ))}
 
-        <Hero x={heroAt.pos.x - 70} y={heroAt.pos.y + 14} />
+        <Hero x={heroSP.x - PLOT - 24} y={heroSP.y + 34} />
       </svg>
     </div>
   );
@@ -385,15 +483,19 @@ function MapView({ heroAt }: { heroAt: Island }) {
 
 function AreaNode({
   island,
+  at,
   state,
   done,
+  purifying,
   onHover,
   onOpen,
   onFocus,
 }: {
   island: Island;
+  at: { x: number; y: number };
   state: IslandState;
   done: number;
+  purifying: boolean;
   onHover: (id: string | null) => void;
   onOpen: () => void;
   onFocus: () => void;
@@ -402,11 +504,13 @@ function AreaNode({
   const label = `${state === 'locked' ? '???' : island.name}`;
   const labelW = Math.max(130, label.length * 12.5 + 70);
   const sealed = state === 'locked';
+  const completed = useStore((s) => s.completed);
 
   return (
     <g
       className={`area area-${state}`}
-      transform={`translate(${island.pos.x}, ${island.pos.y + 14})`}
+      transform={`translate(${at.x.toFixed(1)}, ${at.y.toFixed(1)})`}
+      data-sfx="confirm"
       onFocus={onFocus}
       onMouseEnter={() => onHover(island.id)}
       onMouseLeave={() => onHover(null)}
@@ -417,20 +521,12 @@ function AreaNode({
       aria-label={`${island.name}: ${island.subject}. ${STATE_LABEL[state]}, ${done} of ${total} quests.`}
     >
       <title>{`${island.name} — ${island.subject}\n${STATE_LABEL[state]} · ${done}/${total} quests`}</title>
-      <ellipse cx="0" cy="6" rx="62" ry="20" fill={sealed ? '#6f7b63' : '#c9a46a'} stroke={sealed ? 'none' : '#8a6a3f'} strokeWidth="2" opacity="0.9" />
-      <g filter={sealed ? 'url(#sealed)' : undefined} className="area-sprite">
-        <LandmarkSprite kind={landmarkOf(island)} c={island.color} />
+      <g className="area-sprite">
+        <AreaScene island={island} completed={completed} purifying={purifying} />
       </g>
 
       {sealed && (
-        <g filter="url(#fog)" opacity="0.5" aria-hidden>
-          <ellipse cx="-30" cy="-30" rx="38" ry="20" fill="#eef1f6" />
-          <ellipse cx="26" cy="-50" rx="40" ry="22" fill="#eef1f6" />
-          <ellipse cx="6" cy="-14" rx="46" ry="18" fill="#e3e8ef" />
-        </g>
-      )}
-      {sealed && (
-        <text y="-28" textAnchor="middle" className="area-mystery">
+        <text y="-60" textAnchor="middle" className="area-mystery">
           ?
         </text>
       )}
@@ -447,7 +543,7 @@ function AreaNode({
       )}
 
       {state === 'complete' && (
-        <g transform="translate(44,-70)" aria-hidden>
+        <g transform={`translate(${PLOT - 22},-54)`} aria-hidden>
           <line x1="0" y1="0" x2="0" y2="40" stroke="#3b2a1e" strokeWidth="3" />
           <path d="M0,0 L26,7 L0,14Z" fill="#ffcf3d" stroke="#3b2a1e" strokeWidth="2" />
           <text x="10" y="11" className="flag-star">
@@ -456,7 +552,7 @@ function AreaNode({
         </g>
       )}
 
-      <g transform="translate(0, 44)">
+      <g transform={`translate(0, ${PLOT / 2 + 40})`}>
         <rect x={-labelW / 2} y={-19} width={labelW} height={38} rx="6" className="area-label-bg" />
         <text className="area-label" x={-labelW / 2 + 16} y="7">
           {sealed ? '🔒' : island.emoji}

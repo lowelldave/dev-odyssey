@@ -7,6 +7,7 @@ import IslandPage from './pages/IslandPage';
 import Profile from './pages/Profile';
 import QuestPage from './pages/QuestPage';
 import WorldMap from './pages/WorldMap';
+import { type Sfx, sfx } from './lib/sound';
 import { useStore } from './store';
 
 export default function App() {
@@ -16,6 +17,21 @@ export default function App() {
   useEffect(() => {
     markActive();
   }, [markActive]);
+
+  // RPG menu sounds: any button/link/option click blips; elements can pick a
+  // different sound with data-sfx="confirm|back|toggle|none".
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      // clicking a <label> also fires a synthetic click on its <input>: count it once
+      if ((e.target as Element | null)?.tagName === 'INPUT') return;
+      const el = (e.target as Element | null)?.closest<HTMLElement>('[data-sfx], button, a, label.option, [role="link"], summary');
+      if (!el || (el as HTMLButtonElement).disabled) return;
+      const name = el.dataset.sfx ?? 'click';
+      if (name !== 'none') sfx(name as Sfx);
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
   useEffect(() => {
     window.scrollTo(0, 0);
     useStore.getState().dismissCelebration();
