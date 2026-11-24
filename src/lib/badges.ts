@@ -1,6 +1,6 @@
 import { ISLANDS, ISLAND_MAP } from '../data';
 import type { QuizAttempt, Submission } from '../store';
-import { type Completed, isIslandComplete, streak } from './game';
+import { type Completed, countCompleted, isIslandComplete, streak } from './game';
 
 export interface Badge {
   id: string;
@@ -24,7 +24,7 @@ const regionDone = (c: Completed, region: string) =>
 export function computeBadges({ completed, quizAttempts, submissions, activity }: Input): Badge[] {
   const s = streak(activity);
   const minutes = Object.values(activity).reduce((a, b) => a + b, 0);
-  const passedQuizzes = quizAttempts.filter((a) => a.passed).length;
+  const passedQuizzes = new Set(quizAttempts.filter((a) => a.passed).map((a) => a.key)).size;
   const passedProjects = new Set(submissions.filter((x) => x.passed).map((x) => x.key)).size;
   const islandsDone = ISLANDS.filter((i) => isIslandComplete(completed, i)).length;
   const coreTotal = ISLANDS.filter((i) => i.region === 'core').length;
@@ -33,7 +33,7 @@ export function computeBadges({ completed, quizAttempts, submissions, activity }
   const add = (id: string, emoji: string, name: string, desc: string, test: boolean) =>
     list.push({ id, emoji, name, desc, test });
 
-  add('first-quest', '🥾', 'First Steps', 'Complete your first quest.', Object.keys(completed).length > 0);
+  add('first-quest', '🥾', 'First Steps', 'Complete your first quest.', countCompleted(completed) > 0);
   add('first-island', '🗺️', 'Explorer', 'Clear your first area.', islandsDone >= 1);
   add('perfect', '🎯', 'Critical Hit', 'Score 100% on a quiz.', quizAttempts.some((a) => a.score === 100));
   add('quizmaster', '🧠', 'Sage of Trials', 'Pass 25 quizzes.', passedQuizzes >= 25);

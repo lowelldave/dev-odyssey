@@ -12,6 +12,8 @@ export interface CheckReport {
   repo: string;
   branch: string;
   fileCount: number;
+  /** non-failing note, e.g. a truncated file tree */
+  warning?: string;
   results: RuleResult[];
   score: number; // 0-100
   passed: boolean;
@@ -42,11 +44,21 @@ class GitHubClient {
     const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     const res = await fetch(`${API}${path}`, { headers });
-    if (res.status === 403 || res.status === 429) {
+    const rateLimited = res.status === 429 || (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0');
+    if (rateLimited) {
       const reset = res.headers.get('x-ratelimit-reset');
-      const when = reset ? new Date(Number(reset) * 1000).toLocaleTimeString() : 'later';
+      const retry = reset ? `after ${new Date(Number(reset) * 1000).toLocaleTimeString()}` : 'later';
       throw new Error(
-        `GitHub rate limit reached (60 requests/hour without a token). Try again after ${when}, or add a personal access token in Profile → Settings.`,
+        this.token
+          ? `GitHub rate limit reached for your token. Try again ${retry}.`
+          : `GitHub rate limit reached (60 requests/hour without a token). Try again ${retry}, or add a personal access token in Profile → Settings.`,
+      );
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        this.token
+          ? 'GitHub refused access (HTTP ' + res.status + '). Your token may be invalid, expired or lacking read access to this repository. Check it in Profile → Settings, or make sure the repository is public.'
+          : 'GitHub refused access (HTTP ' + res.status + '). The repository may be private. Make it public, or add a personal access token with read access in Profile → Settings.',
       );
     }
     return res;
@@ -59,13 +71,14 @@ class GitHubClient {
     return (await res.json()) as { default_branch: string; description: string | null; homepage: string | null; full_name: string };
   }
 
-  async tree(branch: string): Promise<{ path: string; size: number }[]> {
+  async tree(branch: string): Promise<{ files: { path: string; size: number }[]; truncated: boolean }> {
     const res = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
     if (!res.ok) throw new Error(`Could not read the file tree (HTTP ${res.status}). Is the repository empty?`);
-    const data = (await res.json()) as { tree: { path: string; type: string; size?: number }[] };
-    return data.tree
+    const data = (await res.json()) as { tree: { path: string; type: string; size?: number }[]; truncated?: boolean };
+    const files = data.tree
       .filter((t) => t.type === 'blob' && !IGNORED.test(t.path))
       .map((t) => ({ path: t.path, size: t.size ?? 0 }));
+    return { files, truncated: !!data.truncated };
   }
 
   async commitCount(branch: string): Promise<number> {
@@ -111,7 +124,7 @@ export async function runProjectCheck(
   const meta = await gh.meta();
   const branch = meta.default_branch;
   onProgress?.('Mapping files…');
-  const files = await gh.tree(branch);
+  const { files, truncated } = await gh.tree(branch);
   const paths = files.map((f) => f.path);
   const sizes = new Map(files.map((f) => [f.path, f.size]));
 
@@ -194,6 +207,9 @@ export async function runProjectCheck(
     repo: meta.full_name,
     branch,
     fileCount: paths.length,
+    warning: truncated
+      ? 'This repository is very large, so GitHub returned only part of its file list. Some file checks may be incomplete.'
+      : undefined,
     results,
     score,
     passed: requiredOk && score >= checkpoint.passPercent,

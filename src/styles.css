@@ -158,7 +158,9 @@ a {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 6px 16px;
+  /* wrap at any width so a timer chip never forces horizontal page scroll */
+  flex-wrap: wrap;
   padding: 8px 16px;
   color: var(--text);
   background: linear-gradient(180deg, var(--win-top), var(--win-bot));
@@ -212,8 +214,11 @@ a {
 .hud-stats {
   margin-left: auto;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
+  min-width: 0;
 }
 .hud-player {
   display: flex;
@@ -568,6 +573,22 @@ a.chip:hover {
 @keyframes bob {
   50% {
     transform: translateY(-3px);
+  }
+}
+/* Level of detail: art puts its fine detail in <g class="d">; the map hides it when zoomed out. */
+.lod-low .d {
+  display: none;
+}
+.tw {
+  animation: twk 1.8s ease-in-out infinite;
+}
+@keyframes twk {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
   }
 }
 .glow {
@@ -997,6 +1018,10 @@ a.note:focus-visible {
 }
 
 /* ---------- quest page ---------- */
+.quest-page {
+  /* the tilted paper-under sheets poke a few px past the edge; clip (unlike hidden) keeps sticky and vertical shadows working */
+  overflow-x: clip;
+}
 .quest-head {
   margin-bottom: 22px;
 }
@@ -1080,7 +1105,13 @@ a.note:focus-visible {
   margin: 0 0 16px;
   background: var(--slot);
 }
+.quiz-q {
+  /* fieldsets default to min-width: min-content, which long inline code would stretch past the page */
+  min-width: 0;
+}
 .quiz-q legend {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-family: var(--pixel);
   font-size: 1.05rem;
   padding: 0 6px;
@@ -1609,7 +1640,11 @@ a.note:focus-visible {
     position: static;
   }
   .dash-grid {
-    grid-template-columns: 1fr;
+    /* minmax(0, …) lets wide children (heatmap, tables) shrink instead of stretching the page */
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dash-grid > * {
+    min-width: 0;
   }
   .span-2 {
     grid-column: auto;
@@ -1618,6 +1653,20 @@ a.note:focus-visible {
 @media (max-width: 680px) {
   .hud {
     gap: 6px;
+    padding: 8px;
+    /* a running timer chip wraps the stats onto a second row instead of overflowing */
+    flex-wrap: wrap;
+  }
+  .hud-stats {
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .hud-stats .chip {
+    padding: 2px 6px;
+  }
+  .hud-level {
+    min-width: 56px;
   }
   .brand-name,
   .hud-nav span {
@@ -2109,6 +2158,13 @@ a.note:focus-visible {
 .paper .lead {
   font-size: 1.1rem;
   color: #3a3a4a;
+}
+.quiz-q code,
+.paper code {
+  overflow-wrap: anywhere;
+}
+.quiz-q code {
+  white-space: normal;
 }
 .paper code {
   color: #8a3b12;

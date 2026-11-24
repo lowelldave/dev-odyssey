@@ -127,6 +127,11 @@ export default function ProjectChecker({
               {report.score}%
             </div>
           </div>
+          {report.warning && (
+            <p className="small" role="status">
+              ⚠️ {report.warning}
+            </p>
+          )}
           <ul className="checks">
             {report.results.map((r, i) => (
               <li key={i} className={r.passed ? 'ok' : r.optional ? 'warn' : 'bad'}>

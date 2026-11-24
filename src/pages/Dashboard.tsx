@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
-import { TOTAL_QUESTS, isIslandComplete, islandDoneCount, levelInfo, nextQuests, streak, titleFor, toDay } from '../lib/game';
+import { TOTAL_QUESTS, countCompleted, isIslandComplete, islandDoneCount, levelInfo, nextQuests, streak, titleFor, toDay } from '../lib/game';
 import { useStore } from '../store';
 import type { Region } from '../types';
 
@@ -12,7 +12,7 @@ export default function Dashboard() {
   const st = streak(activity);
   const totalMinutes = Object.values(activity).reduce((a, b) => a + b, 0);
   const islandsDone = ISLANDS.filter((i) => isIslandComplete(completed, i)).length;
-  const questsDone = Object.keys(completed).length;
+  const questsDone = countCompleted(completed);
 
   const weekMinutes = (() => {
     let m = 0;

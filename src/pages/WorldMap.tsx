@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AreaScene, PLOT, SceneDefs, sceneInfo } from '../components/AreaScene';
+import { AreaScene, PLOT, SceneDefs, type SceneInfo, sceneInfo } from '../components/AreaScene';
 import {
+  type Deco,
   Decoration,
   Hero,
   LANDMARK_HEIGHT,
@@ -17,7 +18,7 @@ import {
 } from '../components/Overworld';
 import { sfx } from '../lib/sound';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
-import { type IslandState, TOTAL_QUESTS, islandDoneCount, islandState, nextQuests } from '../lib/game';
+import { type IslandState, TOTAL_QUESTS, countCompleted, islandDoneCount, islandState, nextQuests } from '../lib/game';
 import { useStore } from '../store';
 import type { Island, Region } from '../types';
 
@@ -25,6 +26,11 @@ import type { Island, Region } from '../types';
 const { W, H } = SCREEN;
 const DEFAULT_SCALE = 0.7;
 const MAX_SCALE = 1.6;
+/** Below this zoom the fine-detail layer (class "d") is hidden to keep the map light. */
+const LOD_SCALE = 0.5;
+/** Things this far outside the view stay rendered; bounds snap to CULL_STEP so panning rarely changes the set. */
+const CULL_MARGIN = 300;
+const CULL_STEP = 200;
 
 /** World-space positions (with the natural jitter) and their projected screen points. */
 const POS = layoutPositions(ISLANDS);
@@ -91,7 +97,7 @@ export default function WorldMap() {
     }
   };
 
-  const doneQuests = Object.keys(completed).length;
+  const doneQuests = countCompleted(completed);
   const next = nextQuests(completed, 1)[0];
 
   return (
@@ -319,6 +325,47 @@ function MapView({ heroAt }: { heroAt: Island }) {
 
   const view = cam ? { w: size.w / cam.scale, h: size.h / cam.scale } : { w: W, h: H };
   const viewBox = cam ? `${cam.cx - view.w / 2} ${cam.cy - view.h / 2} ${view.w} ${view.h}` : `0 0 ${W} ${H}`;
+  const lodLow = !!cam && cam.scale < LOD_SCALE;
+
+  // Snapped view bounds: primitives, so the memos below only recompute after a pan of ~CULL_STEP.
+  const snapLo = (v: number) => Math.floor((v - CULL_MARGIN) / CULL_STEP) * CULL_STEP;
+  const snapHi = (v: number) => Math.ceil((v + CULL_MARGIN) / CULL_STEP) * CULL_STEP;
+  const bx0 = cam ? snapLo(cam.cx - view.w / 2) : 0;
+  const bx1 = cam ? snapHi(cam.cx + view.w / 2) : -1;
+  const by0 = cam ? snapLo(cam.cy - view.h / 2) : 0;
+  const by1 = cam ? snapHi(cam.cy + view.h / 2) : -1;
+
+  /** Indices (into the y-sorted decorations) that are inside the snapped bounds. */
+  const visibleDecos = useMemo(() => {
+    let lo = 0;
+    let hi = decorations.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (decorations[mid].y < by0) lo = mid + 1;
+      else hi = mid;
+    }
+    const out: number[] = [];
+    for (let i = lo; i < decorations.length && decorations[i].y <= by1; i++) {
+      if (decorations[i].x >= bx0 && decorations[i].x <= bx1) out.push(i);
+    }
+    return out;
+  }, [decorations, bx0, bx1, by0, by1]);
+
+  /** Areas outside the bounds keep their focusable node but skip the heavy scene. */
+  const culledAreas = useMemo(() => {
+    const out = new Set<string>();
+    for (const i of ISLANDS) {
+      const { x, y } = SP[i.id];
+      if (x < bx0 || x > bx1 || y < by0 || y > by1) out.add(i.id);
+    }
+    return out;
+  }, [bx0, bx1, by0, by1]);
+
+  // stable callbacks so memoised area nodes don't re-render on every drag frame
+  const revealRef = useRef(revealArea);
+  revealRef.current = revealArea;
+  const onAreaFocus = useCallback((island: Island) => revealRef.current(island), []);
+  const onAreaOpen = useCallback((id: string) => navigate(`/island/${id}`), [navigate]);
 
   return (
     <div
@@ -353,7 +400,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
         </button>
       </div>
       {!hasDragged && <p className="map-hint">Drag to explore · Ctrl + scroll to zoom</p>}
-      <svg className="map" viewBox={viewBox} preserveAspectRatio="xMidYMid slice" role="img" aria-label="World map of the Realm of Devoria">
+      <svg className={`map ${lodLow ? 'lod-low' : ''}`} viewBox={viewBox} preserveAspectRatio="xMidYMid slice" role="group" aria-label="World map of the Realm of Devoria">
         <defs>
           <pattern id="sea-waves" width="90" height="40" patternUnits="userSpaceOnUse">
             <path d="M8 22 q8 -8 16 0 q8 8 16 0" fill="none" stroke="#bfe6ff" strokeOpacity="0.55" strokeWidth="2.5" />
@@ -378,6 +425,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
         </defs>
 
         {/* sea, then the continent as a raised plateau with layered cliffs */}
+        <g aria-hidden>
         <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="#3f86c6" />
         <rect width={W} height={H} fill="url(#sea-depth)" />
         <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#sea-waves)" />
@@ -414,12 +462,14 @@ function MapView({ heroAt }: { heroAt: Island }) {
           })}
         </g>
 
+        </g>
+
         {/* roads */}
         {ROADS.map((r) => {
           const open = states[r.from.id] === 'complete';
           const lit = hover === r.to.id || hover === r.from.id;
           return (
-            <g key={`${r.from.id}-${r.to.id}`} className={`road ${open ? 'road-open' : 'road-sealed'} ${lit ? 'road-lit' : ''}`}>
+            <g key={`${r.from.id}-${r.to.id}`} aria-hidden className={`road ${open ? 'road-open' : 'road-sealed'} ${lit ? 'road-lit' : ''}`}>
               {open ? (
                 <>
                   <path d={r.d} className="road-edge" />
@@ -433,14 +483,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
         })}
 
         {/* scenery */}
-        <g className="scenery" aria-hidden>
-          {decorations.map((d, i) => {
-            const info = d.near ? infos[d.near] : undefined;
-            const progress = !info ? 1 : info.level === 4 ? 0 : info.done / info.total;
-            const blighted = !!info && info.level !== 0 && d.roll >= progress;
-            return <Decoration key={i} kind={blighted ? corruptKind(d.kind) : d.kind} x={d.x} y={d.y} s={d.s} />;
-          })}
-        </g>
+        <Scenery decorations={decorations} indices={visibleDecos} infos={infos} />
 
         {/* land banners */}
         {REGION_LABELS.map(({ region, x: wx, y: wy }) => {
@@ -448,7 +491,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
           const w = label.length * 21 + 50;
           const { x, y } = project(wx, wy);
           return (
-            <g key={region} transform={`translate(${x},${y})`} className="region-banner">
+            <g key={region} transform={`translate(${x},${y})`} className="region-banner" aria-hidden>
               <path d={`M${-w / 2 - 22},-6 L${-w / 2},-20 L${-w / 2},16 Z M${w / 2 + 22},-6 L${w / 2},-20 L${w / 2},16 Z`} fill="#c9a86a" stroke="#5c4124" strokeWidth="3" />
               <rect x={-w / 2} y={-24} width={w} height={40} rx="4" fill="#f4e4bb" stroke="#5c4124" strokeWidth="3" />
               <text y="5" textAnchor="middle" className="region-label">
@@ -469,24 +512,48 @@ function MapView({ heroAt }: { heroAt: Island }) {
               state={states[island.id]}
               done={islandDoneCount(completed, island)}
               purifying={purifying.includes(island.id)}
+              culled={culledAreas.has(island.id)}
               onHover={setHover}
-              onOpen={() => navigate(`/island/${island.id}`)}
-              onFocus={() => revealArea(island)}
+              onOpen={onAreaOpen}
+              onFocus={onAreaFocus}
             />
           ))}
 
-        <Hero x={heroSP.x - PLOT - 24} y={heroSP.y + 34} />
+        <g aria-hidden>
+          <Hero x={heroSP.x - PLOT - 24} y={heroSP.y + 34} />
+        </g>
       </svg>
     </div>
   );
 }
 
-function AreaNode({
+/** One piece of scenery; memoised so a changed visible set only renders the newcomers. */
+const DecoItem = memo(function DecoItem({ kind, x, y, s }: { kind: string; x: number; y: number; s: number }) {
+  return <Decoration kind={kind} x={x} y={y} s={s} />;
+});
+
+/** The scenery layer: re-renders only when the visible set or area progress changes, not on every pan frame. */
+const Scenery = memo(function Scenery({ decorations, indices, infos }: { decorations: Deco[]; indices: number[]; infos: Record<string, SceneInfo> }) {
+  return (
+    <g className="scenery" aria-hidden>
+      {indices.map((i) => {
+        const d = decorations[i];
+        const info = d.near ? infos[d.near] : undefined;
+        const progress = !info ? 1 : info.level === 4 ? 0 : info.done / info.total;
+        const blighted = !!info && info.level !== 0 && d.roll >= progress;
+        return <DecoItem key={i} kind={blighted ? corruptKind(d.kind) : d.kind} x={d.x} y={d.y} s={d.s} />;
+      })}
+    </g>
+  );
+});
+
+const AreaNode = memo(function AreaNode({
   island,
   at,
   state,
   done,
   purifying,
+  culled,
   onHover,
   onOpen,
   onFocus,
@@ -496,9 +563,11 @@ function AreaNode({
   state: IslandState;
   done: number;
   purifying: boolean;
+  /** off screen: stays focusable and labelled, but skips the (expensive) scene */
+  culled: boolean;
   onHover: (id: string | null) => void;
-  onOpen: () => void;
-  onFocus: () => void;
+  onOpen: (id: string) => void;
+  onFocus: (island: Island) => void;
 }) {
   const total = island.quests.length;
   const label = `${state === 'locked' ? '???' : island.name}`;
@@ -511,18 +580,18 @@ function AreaNode({
       className={`area area-${state}`}
       transform={`translate(${at.x.toFixed(1)}, ${at.y.toFixed(1)})`}
       data-sfx="confirm"
-      onFocus={onFocus}
+      onFocus={() => onFocus(island)}
       onMouseEnter={() => onHover(island.id)}
       onMouseLeave={() => onHover(null)}
-      onClick={onOpen}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
+      onClick={() => onOpen(island.id)}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen(island.id)}
       tabIndex={0}
       role="link"
       aria-label={`${island.name}: ${island.subject}. ${STATE_LABEL[state]}, ${done} of ${total} quests.`}
     >
       <title>{`${island.name} — ${island.subject}\n${STATE_LABEL[state]} · ${done}/${total} quests`}</title>
       <g className="area-sprite">
-        <AreaScene island={island} completed={completed} purifying={purifying} />
+        {!culled && <AreaScene island={island} completed={completed} purifying={purifying} />}
       </g>
 
       {sealed && (
@@ -570,7 +639,7 @@ function AreaNode({
       </g>
     </g>
   );
-}
+});
 
 function ListView() {
   const completed = useStore((s) => s.completed);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ISLAND_MAP } from '../data';
 import { monstersOf } from '../data/monsters';
@@ -26,6 +26,64 @@ export default function Celebration() {
     if (c.levelUp) sfx('levelup');
   }, [c]);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const open = !!c;
+
+  // Escape closes, Tab stays inside the dialog, and focus returns to where it was on close.
+  // remember the last element focused outside the dialog, so focus can go back there on close
+  const lastOutside = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      if (e.target instanceof HTMLElement && !dialogRef.current?.contains(e.target)) lastOutside.current = e.target;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    // React's autoFocus ignores links, so move focus to the primary choice ourselves
+    dialogRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismiss();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const nodes = dialogRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!nodes?.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement;
+      if (!dialogRef.current?.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // the trigger may be gone (the quiz swaps to its result view): fall back to the checkpoint section, then <main>
+      const previous = lastOutside.current;
+      if (previous?.isConnected) {
+        previous.focus();
+        return;
+      }
+      const fallback = document.getElementById('checkpoint') ?? document.querySelector<HTMLElement>('main');
+      if (fallback) {
+        if (!fallback.hasAttribute('tabindex')) fallback.setAttribute('tabindex', '-1');
+        fallback.focus({ preventScroll: true });
+      }
+    };
+  }, [open, dismiss]);
+
   if (!c) return null;
 
   const island = ISLAND_MAP[c.islandId];
@@ -41,7 +99,7 @@ export default function Celebration() {
           <i key={i} style={{ left: `${p.left}%`, animationDelay: `${p.delay}s`, background: p.color }} />
         ))}
       </div>
-      <div className="modal window" role="dialog" aria-modal="true" aria-labelledby="victory-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal window" role="dialog" aria-modal="true" aria-labelledby="victory-title" onClick={(e) => e.stopPropagation()}>
         <div className="celebrate-icon">{c.islandCompleted ? '🏆' : '⚔️'}</div>
         <p className="victory" id="victory-title">
           {c.islandCompleted ? 'AREA PURIFIED!' : 'VICTORY!'}
@@ -66,12 +124,12 @@ export default function Celebration() {
         <p className="eyebrow">What next?</p>
         <div className="next-choices">
           {nextQuest ? (
-            <Link className="btn btn-primary" to={`/island/${island.id}/quest/${nextQuest.id}`} data-sfx="confirm" autoFocus>
+            <Link className="btn btn-primary" to={`/island/${island.id}/quest/${nextQuest.id}`} data-sfx="confirm">
               ▶ Next quest: {nextQuest.title}
             </Link>
           ) : (
             c.unlocked.map((u, i) => (
-              <Link key={u.id} className={`btn ${i === 0 ? 'btn-primary' : ''}`} to={`/island/${u.id}`} data-sfx="confirm" autoFocus={i === 0}>
+              <Link key={u.id} className={`btn ${i === 0 ? 'btn-primary' : ''}`} to={`/island/${u.id}`} data-sfx="confirm">
                 ▶ Travel to {u.emoji} {u.name}
               </Link>
             ))

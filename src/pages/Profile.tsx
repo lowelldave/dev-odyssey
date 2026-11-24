@@ -20,7 +20,8 @@ export default function Profile() {
     a.href = URL.createObjectURL(blob);
     a.download = `dev-odyssey-save-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    // revoke after the browser has started the download
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
   const importFile = async (f: File) => {
@@ -96,7 +97,12 @@ export default function Profile() {
           <button className="btn" onClick={() => fileRef.current?.click()}>
             ⬆ Import save
           </button>
-          <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+          <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => {
+              const f = e.target.files?.[0];
+              // clear so choosing the same file again still fires onChange
+              e.target.value = '';
+              if (f) void importFile(f);
+            }} />
           <button
             className="btn btn-danger"
             onClick={() => {

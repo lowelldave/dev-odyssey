@@ -69,7 +69,7 @@ export default function TutorialView({ tutorial }: { tutorial: Tutorial }) {
             <li key={i}>
               <a href={`#step-${i + 1}`} data-sfx="click" onClick={(e) => {
                 e.preventDefault();
-                document.getElementById(`step-${i + 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.getElementById(`step-${i + 1}`)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
               }}>
                 {s.title}
               </a>

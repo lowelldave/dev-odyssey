@@ -11,12 +11,7 @@ import { type Sfx, sfx } from './lib/sound';
 import { useStore } from './store';
 
 export default function App() {
-  const markActive = useStore((s) => s.markActive);
   const { pathname } = useLocation();
-
-  useEffect(() => {
-    markActive();
-  }, [markActive]);
 
   // RPG menu sounds: any button/link/option click blips; elements can pick a
   // different sound with data-sfx="confirm|back|toggle|none".

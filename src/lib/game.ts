@@ -80,6 +80,14 @@ export function nextQuests(c: Completed, limit = 4): { island: Island; quest: Qu
   return out.slice(0, limit);
 }
 
+/** Completed quests that still exist in the content (ignores stale keys from imports/old saves). */
+export const countCompleted = (c: Completed) =>
+  Object.keys(c).filter((k) => {
+    const i = k.indexOf('/');
+    const island = ISLAND_MAP[k.slice(0, i)];
+    return i > 0 && !!island && island.quests.some((q) => q.id === k.slice(i + 1));
+  }).length;
+
 export const TOTAL_QUESTS = ISLANDS.reduce((n, i) => n + i.quests.length, 0);
 
 /* ---------- dates / streak ---------- */
@@ -87,6 +95,9 @@ export const TOTAL_QUESTS = ISLANDS.reduce((n, i) => n + i.quests.length, 0);
 export const today = () => toDay(new Date());
 export const toDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** A single timed session is capped so a forgotten timer can't log a whole day. */
+export const MAX_SESSION_MINUTES = 180;
 
 export function streak(activeDays: Record<string, number>): { current: number; best: number } {
   const days = Object.keys(activeDays).sort();

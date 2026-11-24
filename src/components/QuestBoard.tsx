@@ -58,7 +58,7 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
                 <span className="pin" aria-hidden />
                 <span className="note-kicker">Quest {i + 1}</span>
                 <span className="note-title">{quest.title}</span>
-                <span className="note-summary">{unlocked ? quest.summary : `Sealed until you clear quest ${i}.`}</span>
+                <span className="note-summary">{unlocked ? quest.summary : i === 0 ? 'Sealed — clear the roads to this area first.' : `Sealed until you clear quest ${i}.`}</span>
                 <span className="note-foot">
                   <span className="note-kind">{kindLabel(quest)}</span>
                   <span className="note-reward">+{questXp(quest)} EXP</span>

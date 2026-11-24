@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { levelInfo, streak, titleFor } from '../lib/game';
+import { MAX_SESSION_MINUTES, levelInfo, streak, titleFor } from '../lib/game';
 import { useStore } from '../store';
 
 export default function Hud() {
@@ -63,6 +63,13 @@ function TimerChip({ startedAt, onStop }: { startedAt: number; onStop: () => voi
     return () => clearInterval(id);
   }, []);
   const secs = Math.floor((Date.now() - startedAt) / 1000);
+  if (secs >= MAX_SESSION_MINUTES * 60) {
+    return (
+      <button className="chip chip-timer" onClick={onStop} title={`Only the first ${MAX_SESSION_MINUTES / 60} hours of a session are logged`}>
+        ⏱️ {MAX_SESSION_MINUTES / 60}h+ (capped) ■
+      </button>
+    );
+  }
   const mm = String(Math.floor(secs / 60)).padStart(2, '0');
   const ss = String(secs % 60).padStart(2, '0');
   return (
