@@ -5,6 +5,7 @@ import type { Island, Quest } from '../types';
 export * from './battle';
 export * from './quiz';
 export * from './items';
+export * from './weak';
 import { HP_MAX, REGEN_MS, maxMp, regenNow } from './battle';
 
 export const XP = { quiz: 50, project: 150, boss: 300, islandBonus: 200 } as const;

@@ -129,12 +129,12 @@ export const GoldCoinIcon = (p: IconProps) =>
   );
 
 /** Potion flask. `empty` shows a hollow, greyed flask (none owned). */
-export const PotionIcon = (p: IconProps & { empty?: boolean }) =>
+export const PotionIcon = (p: IconProps & { empty?: boolean; tone?: 'potion' | 'ether' }) =>
   I(
     p,
     <>
-      <path d="M7.6 2.8 H12.4 V7 Q16.4 9 16.4 13 Q16.4 17.6 10 17.6 Q3.6 17.6 3.6 13 Q3.6 9 7.6 7 Z" fill={p.empty ? 'rgba(255,255,255,0.12)' : '#ef4a6a'} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" strokeDasharray={p.empty ? '2.4 1.8' : undefined} />
-      {!p.empty && <path d="M4.2 12 Q10 10 15.8 12 Q16 17 10 17 Q4 17 4.2 12Z" fill="#ff8aa0" />}
+      <path d="M7.6 2.8 H12.4 V7 Q16.4 9 16.4 13 Q16.4 17.6 10 17.6 Q3.6 17.6 3.6 13 Q3.6 9 7.6 7 Z" fill={p.empty ? 'rgba(255,255,255,0.12)' : p.tone === 'ether' ? '#4a6aef' : '#ef4a6a'} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" strokeDasharray={p.empty ? '2.4 1.8' : undefined} />
+      {!p.empty && <path d="M4.2 12 Q10 10 15.8 12 Q16 17 10 17 Q4 17 4.2 12Z" fill={p.tone === 'ether' ? '#9aa8ff' : '#ff8aa0'} />}
       {!p.empty && <path d="M6 12.4 Q6 10.6 7.8 9.6" fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" />}
       <rect x="7.2" y="1.4" width="5.6" height="2.4" rx="0.8" fill="#b8742a" stroke={INK} strokeWidth="1" />
     </>,

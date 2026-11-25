@@ -14,11 +14,11 @@ export function HintCard({ children }: { children: ReactNode }) {
 
 export type HintButtonState = 'ready' | 'bought' | 'no-hint' | 'no-mp';
 /** Visual-only hint button. The caller owns onClick/aria-disabled logic; `reason` is rendered as visible helper text. */
-export function HintButtonFace({ state, cost = 10, reason }: { state: HintButtonState; cost?: number; reason?: string }) {
+export function HintButtonFace({ state, cost = 10, reason, free = false }: { state: HintButtonState; cost?: number; reason?: string; free?: boolean }) {
   return (
     <>
       <HintBulbIcon size={16} />
-      <span>{state === 'bought' ? 'Hint shown' : `Hint (${cost} MP)`}</span>
+      <span>{state === 'bought' ? 'Hint shown' : free ? 'Hint (free)' : `Hint (${cost} MP)`}</span>
       {state !== 'ready' && state !== 'bought' && reason && <span className="jr-hint-reason">{reason}</span>}
     </>
   );

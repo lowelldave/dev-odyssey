@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type CheckReport, parseRepoUrl, runProjectCheck } from '../lib/github';
-import { questKey } from '../lib/game';
+import { type GoldAward, questKey } from '../lib/game';
 import { monstersOf } from '../data/monsters';
 import { useReducedMotion } from '../lib/motion';
 import { sfx } from '../lib/sound';
@@ -38,7 +38,7 @@ export default function ProjectChecker({
   // the report arrives in one piece; it is revealed one check at a time (presentation only: no HP is lost here)
   const [revealed, setRevealed] = useState(0);
   // gold from a first clear; 0 for a re-check of a cleared quest
-  const [goldWon, setGoldWon] = useState(0);
+  const [goldWon, setGoldWon] = useState<GoldAward | null>(null);
   const reduced = useReducedMotion();
   const pending = useRef<(() => void) | null>(null);
   const boss = monstersOf(island.id).boss;
@@ -49,6 +49,7 @@ export default function ProjectChecker({
     const finish = () => {
       if (!pending.current) return;
       pending.current = null;
+      // a boss project never earns the flawless bonus, only the base and the streak bonus
       if (report.passed) setGoldWon(completeQuest(island.id, quest.id, { score: report.score, repo: report.repo }));
     };
     pending.current = finish;
@@ -80,7 +81,7 @@ export default function ProjectChecker({
     setError('');
     setReport(null);
     setRevealed(0);
-    setGoldWon(0);
+    setGoldWon(null);
     setBusy(true);
     try {
       const rep = await runProjectCheck(url, checkpoint, token, setProgress);
@@ -183,10 +184,17 @@ export default function ProjectChecker({
           <div className="report-head">
             <div>
               <strong>{report.passed ? '🏆 Boss defeated! Project approved.' : '💫 The boss still stands'}</strong>
-              {report.passed && goldWon > 0 && (
-                <p className="gold-gain">
-                  <GoldCoinIcon size={16} /> +{goldWon} gold
-                </p>
+              {report.passed && goldWon && (
+                <>
+                  <p className="gold-gain">
+                    <GoldCoinIcon size={16} /> +{goldWon.base} gold
+                  </p>
+                  {goldWon.streak > 0 && (
+                    <p className="gold-gain gold-bonus">
+                      <GoldCoinIcon size={16} /> {goldWon.streakDays}-day streak bonus: +{goldWon.streak} gold
+                    </p>
+                  )}
+                </>
               )}
               <p className="muted small">
                 {report.repo} @ {report.branch} · {report.fileCount} files inspected

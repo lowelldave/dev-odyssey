@@ -2,6 +2,7 @@ import { formatDuration, partyStats } from '../lib/game';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { Bar, HeartIcon, MpCrystalIcon, Portrait } from './art';
+import EtherButton from './EtherButton';
 import Purse from './Purse';
 import TentButton from './TentButton';
 import StatBar from './ui/StatBar';
@@ -76,11 +77,12 @@ export default function PartyPanel({ variant = 'full', legend = true, purse = tr
         <div className="party-purse">
           <Purse />
           <TentButton />
+          <EtherButton />
         </div>
       )}
       {legend && (
         <p className="party-legend muted small">
-          HP: −10 to −20 per wrong answer, +1/min outside battle, full when you purify an area. MP: hints. EXP: next level. Potions: +30 HP in battle. Tents: +50 HP, +30 MP outside battle.
+          HP: −10 to −20 per wrong answer, +1/min outside battle, full when you purify an area. MP: hints. EXP: next level. Potions: +30 HP in battle. Tents: +50 HP, +30 MP outside battle. Ethers: +30 MP.
         </p>
       )}
     </section>

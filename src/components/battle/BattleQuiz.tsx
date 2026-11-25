@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { monstersOf } from '../../data/monsters';
+import { armBattle } from '../../lib/battleNav';
 import {
   type BattleQuestion,
+  type GoldAward,
   HINT_COST,
   QUIZ_DRAW,
   drawQuestions,
@@ -11,6 +13,8 @@ import {
   questKey,
   quizPasses,
   quizScore,
+  weakCountFor,
+  weakKey,
 } from '../../lib/game';
 import { useReducedMotion } from '../../lib/motion';
 import { sfx } from '../../lib/sound';
@@ -41,11 +45,11 @@ import DefeatModal from './DefeatModal';
 import InlineText from '../ui/InlineText';
 import StatBar from '../ui/StatBar';
 
-type Phase = 'loading' | 'asking' | 'resolved' | 'defeated' | 'failed' | 'won';
+type Phase = 'loading' | 'asking' | 'resolved' | 'defeated' | 'failed' | 'won' | 'trained';
 
 interface Fx {
   id: number;
-  kind: 'hit' | 'hurt' | 'finish' | 'deflect' | 'heal';
+  kind: 'hit' | 'hurt' | 'finish' | 'deflect' | 'heal' | 'mana' | 'miss';
   amount?: number;
 }
 
@@ -61,6 +65,7 @@ export default function BattleQuiz({
   checkpoint,
   next,
   lessonPath,
+  mode = 'battle',
 }: {
   island: Island;
   quest: Quest;
@@ -68,8 +73,12 @@ export default function BattleQuiz({
   next: { href: string; label: string };
   /** the quest (lesson) page: failing, fleeing and finishing all return here */
   lessonPath: string;
+  /** training: free practice on a cleared quest. No HP lost, no rewards, no `battle` record. */
+  mode?: 'battle' | 'training';
 }) {
+  const training = mode === 'training';
   const navigate = useNavigate();
+  const location = useLocation();
   const key = questKey(island.id, quest.id);
   const pool = checkpoint.questions;
   const n = Math.min(QUIZ_DRAW, pool.length);
@@ -82,7 +91,13 @@ export default function BattleQuiz({
   const endBattle = useStore((s) => s.endBattle);
   const buyHint = useStore((s) => s.buyHint);
   const drinkPotion = useStore((s) => s.drinkPotion);
+  const drinkEther = useStore((s) => s.drinkEther);
+  const recordAnswer = useStore((s) => s.recordAnswer);
+  const noteDraw = useStore((s) => s.noteDraw);
+  const finishTraining = useStore((s) => s.finishTraining);
+  const weak = useStore((s) => s.weak);
   const potions = useStore((s) => s.items.potion);
+  const ethers = useStore((s) => s.items.ether);
   const shieldUp = useStore((s) => !!s.battle?.shield);
   const recordQuiz = useStore((s) => s.recordQuiz);
   const completeQuest = useStore((s) => s.completeQuest);
@@ -116,11 +131,18 @@ export default function BattleQuiz({
   // the auto-shield has deflected a hit in this battle
   const [deflected, setDeflected] = useState(false);
   // gold from a first clear; null until the clear has been recorded
-  const [goldWon, setGoldWon] = useState<number | null>(null);
+  const [goldWon, setGoldWon] = useState<GoldAward | null>(null);
+  // one ether per question, like potions
+  const [etherUsedAt, setEtherUsedAt] = useState<number | null>(null);
+  // training: hints are free, so they are tracked locally instead of in the store
+  const [freeHints, setFreeHints] = useState<ReadonlySet<string>>(new Set());
+  // training: positions (in `drawn`) answered wrongly this session
+  const [missed, setMissed] = useState<number[]>([]);
   const keepRef = useRef<HTMLButtonElement>(null);
   const askedAt = useRef(0);
   const pendingComplete = useRef<number | null>(null);
   const pendingScore = useRef(0);
+  const pendingPerfect = useRef(false);
   const focusRef = useRef<HTMLDivElement>(null);
   const hpMax = party.hp.max;
 
@@ -144,7 +166,7 @@ export default function BattleQuiz({
       if (pendingComplete.current !== null) {
         window.clearTimeout(pendingComplete.current);
         pendingComplete.current = null;
-        completeQuest(island.id, quest.id, { score: pendingScore.current });
+        completeQuest(island.id, quest.id, { score: pendingScore.current, perfect: pendingPerfect.current });
       }
       if (st.battle?.key === key) st.endBattle();
     },
@@ -156,10 +178,21 @@ export default function BattleQuiz({
     if (!pool.length) return;
     const st = useStore.getState();
     if (st.battle) st.endBattle(); // a knocked-out hero from the last attempt wakes up first
-    const questions = drawQuestions(pool, n, useStore.getState().lastDraw[key] ?? []);
-    const hadInn = !!useStore.getState().innOffer;
-    startBattle(key, questions.map((d) => d.poolIndex));
-    if (hadInn) useStore.getState().showToast('The wayside Inn closed as you set off.');
+    const weakMap = useStore.getState().weak;
+    const questions = drawQuestions(pool, n, useStore.getState().lastDraw[key] ?? [], Math.random, {
+      weightOf: (qid) => weakMap[weakKey(key, qid)]?.w ?? 0,
+      weakCap: training ? n : undefined,
+      forceWeak: training,
+    });
+    const drawnIdx = questions.map((d) => d.poolIndex);
+    if (training) {
+      // no battle record: regeneration keeps running, no shield is equipped and the Inn stays open
+      noteDraw(key, drawnIdx);
+    } else {
+      const hadInn = !!useStore.getState().innOffer;
+      startBattle(key, drawnIdx);
+      if (hadInn) useStore.getState().showToast('The wayside Inn closed as you set off.');
+    }
     setDrawn(questions);
     setIdx(0);
     setPicked(null);
@@ -169,12 +202,20 @@ export default function BattleQuiz({
     setPotionUsedAt(null);
     setDeflected(false);
     setGoldWon(null);
+    setEtherUsedAt(null);
+    setFreeHints(new Set());
+    setMissed([]);
     askedAt.current = Date.now();
     setPhase('asking');
-    const shielded = !!useStore.getState().battle?.shield;
-    setAnnounce(`Battle started. ${shielded ? 'Auto-shield equipped. ' : ''}Question 1 of ${questions.length}.`);
+    const shielded = !training && !!useStore.getState().battle?.shield;
+    const weakNote = questions[0]?.weak ? ' Weak spot: you missed this one before.' : '';
+    setAnnounce(
+      training
+        ? `Training started. No HP is lost and there are no rewards. Question 1 of ${questions.length}.${weakNote}`
+        : `Battle started. ${shielded ? 'Auto-shield equipped. ' : ''}Question 1 of ${questions.length}.${weakNote}`,
+    );
     window.scrollTo(0, 0);
-  }, [pool, n, key, startBattle]);
+  }, [pool, n, key, startBattle, noteDraw, training]);
 
   // the battle starts as soon as the page opens
   useEffect(() => {
@@ -194,11 +235,13 @@ export default function BattleQuiz({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || useStore.getState().celebration) return;
       e.preventDefault();
-      setFleeAsk((v) => !v);
+      // nothing is at stake in training, so Esc leaves without asking
+      if (training) backToLesson();
+      else setFleeAsk((v) => !v);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [phase]);
+  }, [phase, training, backToLesson]);
   // focus "Keep fighting" when the prompt opens; when it closes, put focus back on the active answer
   const fleeWasOpen = useRef(false);
   useEffect(() => {
@@ -218,18 +261,25 @@ export default function BattleQuiz({
 
   const q = drawn[idx];
   const hintKey = q ? `${key}#${q.poolIndex}` : '';
-  const hintBought = !!hintsBought[hintKey];
-  const hintState: 'ready' | 'bought' | 'no-hint' | 'no-mp' = !q?.hint ? 'no-hint' : hintBought ? 'bought' : mpValue < HINT_COST ? 'no-mp' : 'ready';
+  const hintBought = training ? freeHints.has(hintKey) : !!hintsBought[hintKey];
+  const hintState: 'ready' | 'bought' | 'no-hint' | 'no-mp' = !q?.hint ? 'no-hint' : hintBought ? 'bought' : !training && mpValue < HINT_COST ? 'no-mp' : 'ready';
   const hintReason = hintState === 'no-hint' ? 'No hint for this question' : hintState === 'no-mp' ? `Needs ${HINT_COST} MP` : undefined;
 
   const useHint = useCallback(() => {
     if (!q || phase !== 'asking') return;
     if (!q.hint) return;
+    if (training) {
+      if (freeHints.has(hintKey)) return;
+      setFreeHints((s) => new Set(s).add(hintKey));
+      sfx('hint');
+      setAnnounce(`Hint: ${q.hint}`);
+      return;
+    }
     if (buyHint(hintKey) === 'ok') {
       sfx('hint');
       setAnnounce(`Hint: ${q.hint}`);
     }
-  }, [q, phase, hintKey, buyHint]);
+  }, [q, phase, hintKey, buyHint, training, freeHints]);
 
   // H opens the hint from anywhere on the page while a question is open
   useEffect(() => {
@@ -282,17 +332,66 @@ export default function BattleQuiz({
     return () => document.removeEventListener('keydown', onKey);
   }, [phase, drink]);
 
+  const mpMax = party.mp.max;
+  const etherState: 'ready' | 'none' | 'used' | 'full' = ethers === 0 ? 'none' : etherUsedAt === idx ? 'used' : party.mp.value >= mpMax ? 'full' : 'ready';
+  const etherReason =
+    etherState === 'none' ? 'No ethers. Buy them at the shop' : etherState === 'used' ? 'One ether per question' : etherState === 'full' ? 'MP is already full' : undefined;
+
+  const drinkMp = useCallback(() => {
+    if (training || (phase !== 'asking' && phase !== 'resolved') || fleeAsk) return;
+    if (etherUsedAt === idx) {
+      sfx('error');
+      return;
+    }
+    const res = drinkEther();
+    if (res.result !== 'ok') {
+      sfx('error');
+      return;
+    }
+    sfx('potion');
+    setEtherUsedAt(idx);
+    setFx({ id: Date.now(), kind: 'mana', amount: res.restored });
+    setAnnounce(`You drank an Ether: +${res.restored} MP. MP ${Math.round(res.mp)} of ${mpMax}. Ethers left: ${useStore.getState().items.ether}.`);
+  }, [training, phase, fleeAsk, etherUsedAt, idx, drinkEther, mpMax]);
+
+  // E drinks an ether while a question is open or just answered
+  useEffect(() => {
+    if (training || (phase !== 'asking' && phase !== 'resolved')) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'e' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (useStore.getState().celebration) return;
+      e.preventDefault();
+      drinkMp();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [phase, training, drinkMp]);
+
   const resolve = (choice: number) => {
     // a double Enter or a click right after "Next" must not answer the new question
     if (phase !== 'asking' || picked !== null || !q || fleeAsk || Date.now() - askedAt.current < 350) return;
     setPicked(choice);
     const right = choice === q.answer;
     const total = idx + 1;
+    // every answer feeds the weak-spot stats, in battle and in training; a hint means it was not recalled unaided
+    recordAnswer(key, q.qid, right, hintBought);
     if (right) {
       sfx('hit');
       setCorrect((c) => c + 1);
       setFx({ id: Date.now(), kind: 'hit', amount: dmgPerHit });
       setAnnounce(`Question ${total} of ${n}. Correct! ${mons.minion.name} HP ${Math.max(0, 100 - (correct + 1) * dmgPerHit)} of 100.`);
+      setPhase('resolved');
+      return;
+    }
+    if (training) {
+      // the monster still strikes, but nothing is lost and nothing is recorded as an attempt
+      sfx('hurt');
+      setLastMiss(0);
+      setMissed((m) => [...m, idx]);
+      setFx({ id: Date.now(), kind: 'miss' });
+      setAnnounce(`Question ${total} of ${n}. Wrong. Training: no damage.`);
       setPhase('resolved');
       return;
     }
@@ -329,12 +428,21 @@ export default function BattleQuiz({
       setPicked(null);
       askedAt.current = Date.now();
       setPhase('asking');
-      setAnnounce(`Question ${idx + 2} of ${drawn.length}.`);
+      setAnnounce(`Question ${idx + 2} of ${drawn.length}.${drawn[idx + 1]?.weak ? ' Weak spot: you missed this one before.' : ''}`);
       return;
     }
     // all answered and still standing
     const score = quizScore(correct, drawn.length);
     const passed = quizPasses(correct, drawn.length, checkpoint.passPercent);
+    if (training) {
+      // practice only: no attempt, XP or gold is recorded, but it counts as study for the streak
+      finishTraining();
+      sfx('confirm');
+      setFinishScore(score);
+      setPhase('trained');
+      setAnnounce(`Training complete. ${correct} of ${drawn.length} correct.`);
+      return;
+    }
     endBattle();
     recordQuiz({ key, score, passed });
     setFinishScore(score);
@@ -354,9 +462,10 @@ export default function BattleQuiz({
     // first clear: the victory screen plays the fanfare; practice runs get a chime
     if (alreadyDone) sfx('confirm');
     pendingScore.current = score;
+    pendingPerfect.current = correct === drawn.length;
     const finish = () => {
       pendingComplete.current = null;
-      setGoldWon(completeQuest(island.id, quest.id, { score }));
+      setGoldWon(completeQuest(island.id, quest.id, { score, perfect: pendingPerfect.current }));
     };
     if (monsterHp > 0 && !reduced) pendingComplete.current = window.setTimeout(finish, 900);
     else finish();
@@ -395,14 +504,20 @@ export default function BattleQuiz({
   const total = drawn.length;
   const last = idx + 1 >= total;
   const fighting = phase === 'asking' || phase === 'resolved';
+  const weakLeft = training ? weakCountFor(weak, key, quest) : 0;
   return (
-    <div className="battle">
+    <div className={`battle ${training ? 'is-training' : ''}`}>
       <p className="sr-only" role="status" aria-live="polite">
         {announce}
       </p>
+      {training && <p className="training-banner">TRAINING · no HP lost · no rewards</p>}
       {fighting && (
         <div className="flee-row">
-          {fleeAsk ? (
+          {training ? (
+            <button className="btn btn-ghost btn-sm" onClick={backToLesson} aria-keyshortcuts="Escape" data-sfx="back">
+              Leave training <kbd className="kbd">Esc</kbd>
+            </button>
+          ) : fleeAsk ? (
             <div className="flee-confirm" role="group" aria-label="Flee the battle?">
               <p>
                 <strong>Flee the battle?</strong> HP you lost stays lost and this attempt isn&apos;t recorded.
@@ -430,7 +545,7 @@ export default function BattleQuiz({
               outer group would replace its SVG translate. Right answer: the hero lunges and the monster recoils.
               Wrong answer: the monster lunges and the hero recoils. */}
           <g transform="translate(236 138) scale(3)" className={monsterShown <= 0 ? 'monster-fallen' : ''}>
-            <g key={`m-${fx?.id ?? 0}`} className={fx?.kind === 'hurt' || fx?.kind === 'deflect' ? 'anim-monster-attack' : fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-monster-recoil' : ''}>
+            <g key={`m-${fx?.id ?? 0}`} className={fx?.kind === 'hurt' || fx?.kind === 'deflect' || fx?.kind === 'miss' ? 'anim-monster-attack' : fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-monster-recoil' : ''}>
               <Monster family={mons.minion.family} c={monsterCol} name={mons.minion.name} x={0} y={0} />
             </g>
           </g>
@@ -486,6 +601,16 @@ export default function BattleQuiz({
             <DamageNumber amount={fx.amount ?? 0} kind="heal" fxKey={fx.id} />
           </span>
         )}
+        {fx?.kind === 'mana' && (
+          <span className="fx-at fx-hero">
+            <DamageNumber amount={fx.amount ?? 0} kind="mana" fxKey={fx.id} />
+          </span>
+        )}
+        {fx?.kind === 'miss' && (
+          <span className="fx-at fx-hero">
+            <DamageNumber amount={0} kind="block" text="No damage" fxKey={fx.id} />
+          </span>
+        )}
         {phase === 'won' && monsterHp > 0 && <span className="finish-banner">Finishing blow!</span>}
       </div>
 
@@ -493,9 +618,9 @@ export default function BattleQuiz({
       <div className="battle-plates">
         <div className="plate">
           <strong>Hero</strong>
-          <StatBar kind="hp" title="HP" value={party.hp.value} max={hpMax} wounded={party.hp.state === 'wounded'} ko={party.hp.state === 'ko'} paused={party.hp.paused} flash={hitsKey > 0} flashKey={hitsKey} />
+          <StatBar kind="hp" title="HP" value={party.hp.value} max={hpMax} wounded={party.hp.state === 'wounded'} ko={party.hp.state === 'ko'} paused={party.hp.paused} flash={hitsKey > 0} flashKey={hitsKey} status={training ? 'Safe in training' : undefined} />
           <StatBar kind="mp" title="MP" value={party.mp.value} max={party.mp.max} />
-          {(shieldUp || deflected || potions > 0) && (
+          {!training && (shieldUp || deflected || potions > 0 || ethers > 0) && (
             <p className="plate-status small">
               {(shieldUp || deflected) && (
                 <span>
@@ -505,6 +630,11 @@ export default function BattleQuiz({
               {potions > 0 && (
                 <span>
                   <PotionIcon size={14} /> ×{potions}
+                </span>
+              )}
+              {ethers > 0 && (
+                <span>
+                  <PotionIcon size={14} tone="ether" /> ×{ethers}
                 </span>
               )}
             </p>
@@ -520,6 +650,7 @@ export default function BattleQuiz({
         <section className="battle-q" aria-label={`Question ${idx + 1} of ${total}`}>
           <p className="eyebrow">
             Question {idx + 1} of {total} · {need} correct to win
+            {q.weak && <span className="tag tag-weak">Weak spot</span>}
           </p>
           <h3 className="battle-question"><InlineText text={q.question} /></h3>
           <CommandMenu
@@ -543,7 +674,7 @@ export default function BattleQuiz({
               data-sfx="none"
               onClick={() => hintState === 'ready' && picked === null && useHint()}
             >
-              <HintButtonFace state={hintState} cost={HINT_COST} />
+              <HintButtonFace state={hintState} cost={HINT_COST} free={training} />
               <kbd className="kbd">H</kbd>
             </button>
             {hintReason && (
@@ -552,6 +683,7 @@ export default function BattleQuiz({
               </span>
             )}
           </div>
+          {!training && (
           <div className="hint-row">
             <button
               type="button"
@@ -570,6 +702,27 @@ export default function BattleQuiz({
               </span>
             )}
           </div>
+          )}
+          {!training && (
+          <div className="hint-row">
+            <button
+              type="button"
+              className="jr-potion-btn jr-ether-btn"
+              aria-disabled={etherState === 'ready' ? undefined : true}
+              aria-describedby={etherReason ? 'ether-why' : undefined}
+              aria-keyshortcuts="E"
+              data-sfx="none"
+              onClick={drinkMp}
+            >
+              <PotionIcon size={18} tone="ether" empty={ethers === 0} /> Ether ×{ethers} <kbd className="kbd">E</kbd>
+            </button>
+            {etherReason && (
+              <span id="ether-why" className="jr-hint-reason">
+                {etherReason}
+              </span>
+            )}
+          </div>
+          )}
           </div>
           {hintBought && q.hint && <HintCard><InlineText text={q.hint} /></HintCard>}
 
@@ -578,6 +731,10 @@ export default function BattleQuiz({
               {picked === q.answer ? (
                 <p>
                   <strong>Correct!</strong> The {mons.minion.name} takes {dmgPerHit} damage.
+                </p>
+              ) : training ? (
+                <p>
+                  <strong>The {mons.minion.name} strikes! Training: no damage.</strong> The answer was: {q.options[q.answer]}
                 </p>
               ) : deflected && lastMiss === 0 ? (
                 <p>
@@ -593,7 +750,7 @@ export default function BattleQuiz({
               )}
               {q.explain && <p className="explain">💡 <InlineText text={q.explain} /></p>}
               <button className="btn btn-primary" onClick={nextQuestion} data-sfx="confirm">
-                {last ? 'Finish battle ▶' : 'Next question ▶'}
+                {last ? (training ? 'Finish training ▶' : 'Finish battle ▶') : 'Next question ▶'}
               </button>
             </div>
           )}
@@ -624,6 +781,45 @@ export default function BattleQuiz({
         </div>
       )}
 
+      {phase === 'trained' && (
+        <div ref={focusRef} className="result training" role="status">
+          <strong>
+            🎯 Training complete: {correct}/{total} ({finishScore}%).
+          </strong>
+          <p className="muted small">
+            That would {quizPasses(correct, total, checkpoint.passPercent) ? 'pass' : 'not yet pass'} the trial ({need} needed).
+          </p>
+          <p>Weak spots left in this quest: {weakLeft}</p>
+          {missed.length > 0 && (
+            <>
+              <p>You missed:</p>
+              <ul>
+                {missed.map((i) => (
+                  <li key={drawn[i].qid}>
+                    <InlineText text={drawn[i].question} /> <strong>{drawn[i].options[drawn[i].answer]}</strong>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="btn-row">
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate(location.pathname, { replace: true, state: { nonce: armBattle(key), mode: 'training' } })}
+              data-sfx="confirm"
+            >
+              Train again
+            </button>
+            <button className="btn" onClick={backToLesson} data-sfx="back">
+              Back to the lesson
+            </button>
+            <Link className="btn btn-ghost" to="/dashboard" data-sfx="confirm">
+              Weak spots in the Adventure Log
+            </Link>
+          </div>
+        </div>
+      )}
+
       {phase === 'won' && (
         <div className="result pass" role="status">
           <strong>
@@ -638,13 +834,24 @@ export default function BattleQuiz({
             </button>
           </div>
           {practiceWin ? (
-            <p className="muted small">Practice run: replays don&apos;t pay gold.</p>
+            <p className="muted small">Replay: no gold, bonuses or EXP.</p>
           ) : (
-            goldWon !== null &&
-            goldWon > 0 && (
-              <p className="gold-gain">
-                <GoldCoinIcon size={16} /> +{goldWon} gold
-              </p>
+            goldWon !== null && (
+              <>
+                <p className="gold-gain">
+                  <GoldCoinIcon size={16} /> +{goldWon.base} gold
+                </p>
+                {goldWon.perfect > 0 && (
+                  <p className="gold-gain gold-bonus">
+                    <GoldCoinIcon size={16} /> Flawless victory: +{goldWon.perfect} bonus gold
+                  </p>
+                )}
+                {goldWon.streak > 0 && (
+                  <p className="gold-gain gold-bonus">
+                    <GoldCoinIcon size={16} /> {goldWon.streakDays}-day streak bonus: +{goldWon.streak} gold
+                  </p>
+                )}
+              </>
             )
           )}
           {practiceWin && innOffer && <InnPrompt />}

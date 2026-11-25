@@ -24,8 +24,20 @@ import {
   scatterDecorations,
 } from '../components/Overworld';
 import { sfx } from '../lib/sound';
+import { useMerchant } from '../lib/useMerchant';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
-import { type Completed, type IslandState, TOTAL_QUESTS, countCompleted, islandDoneCount, islandState, nextQuests } from '../lib/game';
+import {
+  type Completed,
+  type IslandState,
+  type Seller,
+  TOTAL_QUESTS,
+  countCompleted,
+  formatLeaves,
+  islandDoneCount,
+  islandState,
+  merchantActive,
+  nextQuests,
+} from '../lib/game';
 import { useStore } from '../store';
 import type { Island, Region } from '../types';
 
@@ -114,7 +126,8 @@ function AreaProgress({ island, completed, nextTitle }: { island: Island; comple
 export default function WorldMap() {
   const completed = useStore((s) => s.completed);
   const name = useStore((s) => s.name);
-  const [shopOpen, setShopOpen] = useState(false);
+  // which seller's window is open: the shop, the travelling merchant, or none
+  const [shopOpen, setShopOpen] = useState<false | Seller>(false);
   const [view, setView] = useState<'map' | 'list'>(() => {
     try {
       return (localStorage.getItem('do-view') as 'map' | 'list') ?? 'map';
@@ -151,7 +164,7 @@ export default function WorldMap() {
                 ▶ Continue: {next.quest.title}
               </Link>
             )}
-            <MapMenu onShop={() => setShopOpen(true)} />
+            <MapMenu onShop={() => setShopOpen('shop')} onMerchant={() => setShopOpen('merchant')} />
             <div className="seg">
               <button className={view === 'map' ? 'on' : ''} onClick={() => setViewSaved('map')}>
                 🗺️ World
@@ -167,9 +180,9 @@ export default function WorldMap() {
         </div>
       </section>
 
-      {view === 'map' ? <MapView heroAt={next?.island ?? ISLAND_MAP.summit} onShop={() => setShopOpen(true)} /> : <ListView />}
-      <BottomSheet open={shopOpen} onClose={() => setShopOpen(false)} title="Item Shop">
-        <ShopWindow />
+      {view === 'map' ? <MapView heroAt={next?.island ?? ISLAND_MAP.summit} onShop={() => setShopOpen('shop')} onMerchant={() => setShopOpen('merchant')} /> : <ListView />}
+      <BottomSheet open={shopOpen !== false} onClose={() => setShopOpen(false)} title={shopOpen === 'merchant' ? 'Travelling Merchant' : 'Item Shop'}>
+        <ShopWindow seller={shopOpen || 'shop'} />
       </BottomSheet>
 
       <div className="legend">
@@ -190,7 +203,8 @@ export default function WorldMap() {
   );
 }
 
-function MapView({ heroAt, onShop }: { heroAt: Island; onShop: () => void }) {
+function MapView({ heroAt, onShop, onMerchant }: { heroAt: Island; onShop: () => void; onMerchant: () => void }) {
+  const merchant = useMerchant();
   const completed = useStore((s) => s.completed);
   const navigate = useNavigate();
   const [hover, setHover] = useState<string | null>(null);
@@ -233,6 +247,10 @@ function MapView({ heroAt, onShop }: { heroAt: Island; onShop: () => void }) {
     if (!fresh.length) return;
     setPurifying(fresh);
     markPurified(fresh);
+    const m = useStore.getState().merchant;
+    if (m && fresh.includes(m.islandId) && merchantActive(m, Date.now())) {
+      useStore.getState().showToast(`A travelling merchant has set up camp in ${ISLAND_MAP[m.islandId].name}: 25% off everything for 48 hours.`);
+    }
     const chime = setTimeout(() => sfx('purify'), 250);
     const done = setTimeout(() => setPurifying([]), 2800);
     return () => {
@@ -411,6 +429,7 @@ function MapView({ heroAt, onShop }: { heroAt: Island; onShop: () => void }) {
   const revealPointRef = useRef(revealPoint);
   revealPointRef.current = revealPoint;
   const onShopFocus = useCallback(() => revealPointRef.current(SHOP_SP.x, SHOP_SP.y), []);
+  const onMerchantFocus = useCallback((x: number, y: number) => revealPointRef.current(x, y), []);
   const onAreaOpen = useCallback((id: string) => navigate(`/island/${id}`), [navigate]);
 
   return (
@@ -567,6 +586,18 @@ function MapView({ heroAt, onShop }: { heroAt: Island; onShop: () => void }) {
             />
           ))}
 
+        {/* a sibling of the areas, not nested in one: nested interactive roles are invalid, and it sits on top */}
+        {merchant && SP[merchant.islandId] && (
+          <MerchantNode
+            at={{ x: SP[merchant.islandId].x + MERCHANT_OFFSET.x, y: SP[merchant.islandId].y + MERCHANT_OFFSET.y }}
+            areaName={ISLAND_MAP[merchant.islandId].name}
+            leaves={formatLeaves(merchant.leftMs)}
+            hidden={purifying.includes(merchant.islandId)}
+            onOpen={onMerchant}
+            onFocus={onMerchantFocus}
+          />
+        )}
+
         <g aria-hidden>
           <Hero x={heroSP.x - PLOT - 24} y={heroSP.y + 34} />
         </g>
@@ -605,7 +636,7 @@ const ShopNode = memo(function ShopNode({ onOpen, onFocus }: { onOpen: () => voi
       data-sfx="confirm"
       tabIndex={0}
       role="button"
-      aria-label={`Item Shop: potions, auto-shields and tents. You have ${gold.toLocaleString()} gold.`}
+      aria-label={`Item Shop: potions, ethers, auto-shields and tents. You have ${gold.toLocaleString()} gold.`}
       onFocus={onFocus}
       onClick={onOpen}
       onKeyDown={(e) => {
@@ -626,6 +657,66 @@ const ShopNode = memo(function ShopNode({ onOpen, onFocus }: { onOpen: () => voi
         <rect x={-34} y={-15} width={68} height={30} rx="6" className="area-label-bg" />
         <text className="area-label" x={0} y="6" textAnchor="middle">
           Shop
+        </text>
+      </g>
+    </g>
+  );
+});
+
+/**
+ * Offset from an area's anchor to the merchant's camp. The label spans y 81..130 below the anchor (centred, up to
+ * ~250 wide), the crystal and chest sit above y 60, and the Item Shop is far to the lower left. The camp's hit box is
+ * y -44..+42, so y = 180 starts 6 units under the label.
+ */
+const MERCHANT_OFFSET = { x: PLOT * 0.25, y: PLOT * 1.5 };
+
+/** The travelling merchant's camp: the shop stall at 0.6 scale with a "-25%" plate. Opens his window. */
+const MerchantNode = memo(function MerchantNode({
+  at,
+  areaName,
+  leaves,
+  hidden,
+  onOpen,
+  onFocus,
+}: {
+  at: { x: number; y: number };
+  areaName: string;
+  leaves: string;
+  hidden: boolean;
+  onOpen: () => void;
+  onFocus: (x: number, y: number) => void;
+}) {
+  // the camp appears once the purification animation is over
+  if (hidden) return null;
+  return (
+    <g
+      className="merchant-node"
+      transform={`translate(${at.x.toFixed(1)}, ${at.y.toFixed(1)})`}
+      data-sfx="confirm"
+      tabIndex={0}
+      role="button"
+      aria-label={`Travelling Merchant at ${areaName}: everything 25% off. Leaves in ${leaves}.`}
+      onFocus={() => onFocus(at.x, at.y)}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <title>Travelling Merchant</title>
+      <rect x={-40} y={-44} width={80} height={86} fill="transparent" />
+      <ellipse className="merchant-ring" cx="0" cy="2" rx="36" ry="16" />
+      <g className="merchant-body" aria-hidden="true">
+        <g transform="scale(0.6)">
+          <ShopLandmarkBody />
+        </g>
+      </g>
+      <g transform="translate(0, 22)" aria-hidden="true">
+        <rect x={-24} y={-11} width={48} height={22} rx="5" className="area-label-bg" />
+        <text className="area-label" x={0} y="5" textAnchor="middle" style={{ fontSize: 16 }}>
+          −25%
         </text>
       </g>
     </g>
@@ -743,6 +834,7 @@ const AreaNode = memo(function AreaNode({
 
 function ListView() {
   const completed = useStore((s) => s.completed);
+  const merchant = useMerchant();
   return (
     <div className="region-list">
       {(Object.keys(REGIONS) as Region[]).map((region) => {
@@ -759,7 +851,10 @@ function ListView() {
                   <Link key={island.id} to={`/island/${island.id}`} className={`window island-card state-${state}`} style={{ ['--c' as string]: island.color }}>
                     <span className="island-card-emoji">{state === 'locked' ? '🔒' : island.emoji}</span>
                     <span className="island-card-body">
-                      <strong>{island.name}</strong>
+                      <strong>
+                        {island.name}
+                        {merchant?.islandId === island.id && <span className="tag tag-sale">Merchant −25%</span>}
+                      </strong>
                       <span className="muted small">{island.subject}</span>
                       <span className="bar">
                         <span style={{ width: `${(done / island.quests.length) * 100}%` }} />

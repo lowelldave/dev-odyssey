@@ -1,13 +1,19 @@
-import { Link } from 'react-router-dom';
+import { useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import InlineText from '../components/ui/InlineText';
+import { armBattle } from '../lib/battleNav';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
-import { TOTAL_QUESTS, countCompleted, isIslandComplete, islandDoneCount, levelInfo, nextQuests, streak, titleFor, toDay } from '../lib/game';
+import { TOTAL_QUESTS, countCompleted, isIslandComplete, islandDoneCount, levelInfo, nextQuests, questKey, streak, titleFor, toDay, weakSpots } from '../lib/game';
 import { useStore } from '../store';
 import type { Region } from '../types';
 
 const WEEKS = 26;
 
 export default function Dashboard() {
-  const { xp, completed, quizAttempts, submissions, activity, restDays } = useStore();
+  const { xp, completed, quizAttempts, submissions, activity, restDays, weak } = useStore();
+  const navigate = useNavigate();
+  const weakAreas = useMemo(() => weakSpots(weak), [weak]);
+  const weakTotal = weakAreas.reduce((n, a) => n + a.count, 0);
   const lv = levelInfo(xp);
   const st = streak(activity, restDays);
   const totalMinutes = Object.values(activity).reduce((a, b) => a + b, 0);
@@ -124,6 +130,63 @@ export default function Dashboard() {
             </ul>
           ) : (
             <p className="muted">Take a few quizzes and your weakest topics will show up here.</p>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>🩹 Weak spots</h2>
+          {weakAreas.length ? (
+            <>
+              <p className="muted small">
+                {weakTotal} question{weakTotal === 1 ? '' : 's'} to master, areas with the most weak spots first.
+              </p>
+              <ul className="weak-list">
+                {weakAreas.map(({ island, quests, count }) => (
+                  <li key={island.id}>
+                    <details>
+                      <summary>
+                        {island.emoji} {island.name} · {count} weak spot{count === 1 ? '' : 's'}
+                      </summary>
+                      {quests.map(({ quest, items }) => {
+                        const qk = questKey(island.id, quest.id);
+                        const cleared = !!completed[qk];
+                        return (
+                          <div key={quest.id} className="weak-quest">
+                            <strong>
+                              {quest.title} <span className="muted small">({items.length})</span>
+                            </strong>
+                            <ul>
+                              {items.map((it) => (
+                                <li key={it.qid}>
+                                  <InlineText text={it.question} />
+                                </li>
+                              ))}
+                            </ul>
+                            {cleared ? (
+                              <button
+                                className="btn btn-sm"
+                                data-sfx="confirm"
+                                onClick={() =>
+                                  navigate(`/island/${island.id}/quest/${quest.id}/battle`, { state: { nonce: armBattle(qk), mode: 'training' } })
+                                }
+                              >
+                                🎯 Train
+                              </button>
+                            ) : (
+                              <Link className="btn btn-sm" to={`/island/${island.id}/quest/${quest.id}`} state={{ focusCheckpoint: true }}>
+                                Return to the quest
+                              </Link>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="muted">No weak spots yet. Questions you miss in battle land here so you can train them.</p>
           )}
         </section>
 

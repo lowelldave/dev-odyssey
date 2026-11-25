@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ISLAND_MAP } from '../../data';
-import { nextQuests } from '../../lib/game';
+import { formatLeaves, nextQuests } from '../../lib/game';
 import { sfx } from '../../lib/sound';
+import { useMerchant } from '../../lib/useMerchant';
 import { useStore } from '../../store';
 import { CampfireIcon, InnIcon, SaveIcon, ShopIcon, TomeIcon } from '../art';
 import BottomSheet from '../ui/BottomSheet';
@@ -16,7 +17,8 @@ type View = 'menu' | 'items' | 'campfire' | 'save' | 'inn';
 const TITLES: Record<View, string> = { menu: 'Menu', items: 'Items', campfire: 'Campfire', save: 'Save', inn: 'Wayside Inn' };
 
 /** The map command menu: Continue, Quests, Items, Shop, Campfire, Save and (only while an offer exists) Inn. */
-export default function MapMenu({ onShop }: { onShop: () => void }) {
+export default function MapMenu({ onShop, onMerchant }: { onShop: () => void; onMerchant: () => void }) {
+  const merchant = useMerchant();
   const [view, setView] = useState<View | null>(null);
   const completed = useStore((s) => s.completed);
   const innOffer = useStore((s) => s.innOffer);
@@ -30,8 +32,19 @@ export default function MapMenu({ onShop }: { onShop: () => void }) {
   const items: CommandItem[] = [
     { id: 'continue', label: 'Continue', detail: next ? next.quest.title : 'Nothing left to do', icon: <span aria-hidden="true">▶</span>, disabled: !next, reason: 'Every quest is cleared' },
     { id: 'quests', label: 'Quests', detail: next ? `${next.island.name} quest board` : undefined, icon: <span aria-hidden="true">📋</span>, disabled: !next, reason: 'Every quest is cleared' },
-    { id: 'items', label: 'Items', detail: 'Potions, shields, tents, rest tokens and Tomes', icon: <TomeIcon size={20} /> },
-    { id: 'shop', label: 'Shop', detail: `${gold.toLocaleString()} gold · potions, shields, tents`, icon: <ShopIcon size={20} /> },
+    { id: 'items', label: 'Items', detail: 'Potions, ethers, shields, tents, rest tokens and Tomes', icon: <TomeIcon size={20} /> },
+    { id: 'shop', label: 'Shop', detail: `${gold.toLocaleString()} gold · potions, ethers, shields, tents`, icon: <ShopIcon size={20} /> },
+    ...(merchant
+      ? [
+          {
+            id: 'merchant',
+            label: 'Merchant',
+            detail: `25% off at ${ISLAND_MAP[merchant.islandId]?.name} · leaves in ${formatLeaves(merchant.leftMs)}`,
+            badge: '%',
+            icon: <ShopIcon size={20} />,
+          },
+        ]
+      : []),
     { id: 'campfire', label: 'Campfire', detail: 'Protects your streak', icon: <CampfireIcon size={20} /> },
     { id: 'save', label: 'Save', detail: 'Write or load a Save Scroll', icon: <SaveIcon size={20} /> },
     ...(innOffer ? [{ id: 'inn', label: 'Inn', detail: 'Rest: +50 HP, +30 MP', badge: '!', icon: <InnIcon size={20} /> }] : []),
@@ -47,6 +60,9 @@ export default function MapMenu({ onShop }: { onShop: () => void }) {
     } else if (id === 'shop') {
       close();
       onShop();
+    } else if (id === 'merchant') {
+      close();
+      onMerchant();
     } else if (id === 'items' || id === 'campfire' || id === 'save' || id === 'inn') {
       sfx('confirm');
       setView(id);

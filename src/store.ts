@@ -6,6 +6,10 @@ import {
   type Completed,
   type Inventory,
   type ItemId,
+  type GoldAward,
+  type Merchant,
+  type Seller,
+  type WeakStat,
   EMPTY_INVENTORY,
   GOLD_CAP,
   HINT_COST,
@@ -15,11 +19,18 @@ import {
   INN_MP,
   MAX_SESSION_MINUTES,
   REST_TOKENS_MAX,
-  ITEMS,
+  ETHER_MP,
   POTION_HP,
   XP,
+  applyAnswer,
   campfireDays,
   canBuy,
+  goldAward,
+  merchantActive,
+  parseWeak,
+  priceOf,
+  streak,
+  weakKey,
   isIslandComplete,
   levelInfo,
   maxMp,
@@ -31,7 +42,6 @@ import {
   retroGold,
   rollInn,
   rollMissDamage,
-  rollQuestGold,
   today,
   toDay,
 } from './lib/game';
@@ -66,6 +76,10 @@ export interface Celebration {
   hpRestored?: boolean;
   /** a wayside Inn was rolled for this clear */
   inn?: boolean;
+  /** bonus gold on top of `gold` */
+  bonus?: { perfect: number; streak: number; streakDays: number };
+  /** the travelling merchant followed the player to the purified area (`moved`: from another area) */
+  merchant?: { islandId: string; moved: boolean };
 }
 
 /** A stored wayside Inn offer: rolled once on a passed quiz, never re-rolled on refresh. */
@@ -116,6 +130,16 @@ interface State {
   /** questKey -> pool indices of the last attempt, so a retake prefers other questions */
   lastDraw: Record<string, number[]>;
   innOffer: InnOffer | null;
+  /** "island/quest#qid" -> miss stats that steer which questions are drawn */
+  weak: Record<string, WeakStat>;
+  /** the travelling merchant, set on purification; `merchantActive` decides whether he is still there */
+  merchant: Merchant | null;
+  /** items bought from either seller (backs the First Purchase badge) */
+  purchases: number;
+  /** areas in which a potion was drunk during a battle */
+  potionAreas: Record<string, true>;
+  /** areas purified without a potion (backs the Iron Will badge) */
+  ironWill: Record<string, true>;
   lastBackupAt: string | null;
   /** islandId -> CHEST_CLOSED or the ISO time it was opened */
   chests: Record<string, string>;
@@ -137,7 +161,12 @@ interface State {
   takeHit: () => { damage: number; hp: number; defeated: boolean; deflected: boolean };
   drinkPotion: () => { result: 'ok' | 'none' | 'full' | 'no-battle'; healed: number; hp: number };
   restInTent: () => 'ok' | 'none' | 'in-battle' | 'full';
-  buyItem: (id: ItemId) => 'ok' | 'poor' | 'max';
+  drinkEther: () => { result: 'ok' | 'none' | 'full'; restored: number; mp: number };
+  buyItem: (id: ItemId, seller?: Seller) => 'ok' | 'poor' | 'max' | 'gone';
+  recordAnswer: (questKey: string, qid: string, right: boolean, hinted: boolean) => void;
+  noteDraw: (key: string, drawn: number[]) => void;
+  finishTraining: () => void;
+  expireMerchant: () => void;
   endBattle: () => void;
   spendMp: (cost: number) => boolean;
   buyHint: (hintKey: string) => 'ok' | 'owned' | 'no-mp';
@@ -160,8 +189,8 @@ interface State {
   setNote: (key: string, text: string) => void;
   recordQuiz: (a: Omit<QuizAttempt, 'at'>) => void;
   recordSubmission: (s: Omit<Submission, 'at'>) => void;
-  /** returns the gold awarded (0 for a replay) */
-  completeQuest: (islandId: string, questId: string, extra?: { score?: number; repo?: string }) => number;
+  /** returns the gold awarded, or null for a replay */
+  completeQuest: (islandId: string, questId: string, extra?: { score?: number; repo?: string; perfect?: boolean }) => GoldAward | null;
   startTimer: (key: string) => void;
   stopTimer: () => void;
   addMinutes: (minutes: number) => void;
@@ -171,7 +200,7 @@ interface State {
 }
 
 /** Persisted-store version; exports carry it too so older files stay importable. */
-const STORE_VERSION = 4;
+const STORE_VERSION = 5;
 
 const initial = {
   name: 'Hero',
@@ -197,6 +226,11 @@ const initial = {
   items: { ...EMPTY_INVENTORY } as Inventory,
   lastDraw: {} as Record<string, number[]>,
   innOffer: null as InnOffer | null,
+  weak: {} as Record<string, WeakStat>,
+  merchant: null as Merchant | null,
+  purchases: 0,
+  potionAreas: {} as Record<string, true>,
+  ironWill: {} as Record<string, true>,
   lastBackupAt: null as string | null,
   chests: {} as Record<string, string>,
   restTokens: 0,
@@ -231,6 +265,9 @@ const earnedBadges = (s: {
   quizAttempts: QuizAttempt[];
   submissions: Submission[];
   activity: Record<string, number>;
+  restDays?: Record<string, true>;
+  purchases?: number;
+  ironWill?: Record<string, true>;
 }) =>
   Object.fromEntries(
     computeBadges(s)
@@ -241,6 +278,12 @@ const earnedBadges = (s: {
 const trueMap = (v: unknown): Record<string, true> => {
   const out: Record<string, true> = {};
   if (isRecord(v)) for (const [k, x] of Object.entries(v)) if (x === true) out[k] = true;
+  return out;
+};
+
+const islandTrueMap = (v: unknown): Record<string, true> => {
+  const out: Record<string, true> = {};
+  for (const k of Object.keys(trueMap(v))) if (ISLAND_MAP[k]) out[k] = true;
   return out;
 };
 
@@ -352,6 +395,12 @@ function parseSave(data: Record<string, unknown>) {
       innOffer = { islandId: o.islandId, afterQuestId, rolledAt: o.rolledAt };
     }
   }
+  const items = parseInventory(data.items);
+  let merchant: Merchant | null = null;
+  const mv = data.merchant;
+  if (isRecord(mv) && typeof mv.islandId === 'string' && ISLAND_MAP[mv.islandId] && typeof mv.arrivedAt === 'number' && Number.isFinite(mv.arrivedAt)) {
+    merchant = { islandId: mv.islandId, arrivedAt: Math.min(now, mv.arrivedAt) };
+  }
   return {
     name: str(data.name, initial.name).slice(0, 30),
     avatar: str(data.avatar, initial.avatar),
@@ -371,7 +420,15 @@ function parseSave(data: Record<string, unknown>) {
       typeof data.gold === 'number' && Number.isFinite(data.gold) && data.gold >= 0
         ? Math.min(GOLD_CAP, Math.round(data.gold))
         : retroGold(completed),
-    items: parseInventory(data.items),
+    items,
+    weak: parseWeak(data.weak),
+    purchases:
+      typeof data.purchases === 'number' && Number.isFinite(data.purchases) && data.purchases >= 0
+        ? Math.floor(data.purchases)
+        : items.potion + items.ether + items.shield + items.tent,
+    potionAreas: islandTrueMap(data.potionAreas),
+    ironWill: islandTrueMap(data.ironWill),
+    merchant,
     chests: withChests(chests, completed),
     restTokens: Math.round(num(data.restTokens, 0, REST_TOKENS_MAX, 0)),
     restDays,
@@ -413,10 +470,12 @@ export const useStore = create<State>()(
           if (isQuiz && extra?.score !== undefined && rollInn()) {
             set({ innOffer: { islandId, afterQuestId: questId, rolledAt: new Date(now).toISOString() } });
           }
-          return 0;
+          return null;
         }
         const before = s.completed;
-        const after: Completed = { ...before, [key]: { at: new Date(now).toISOString(), ...extra } };
+        // only score and repo are stored; `perfect` is a one-off input to the bonus
+        const { perfect: _perfect, ...stored } = extra ?? {};
+        const after: Completed = { ...before, [key]: { at: new Date(now).toISOString(), ...stored } };
         let gained = questXp(quest);
         let islandCompleted: Island | undefined;
         let unlocked: Island[] = [];
@@ -429,18 +488,22 @@ export const useStore = create<State>()(
         const newLevel = levelInfo(s.xp + gained).level;
         // purifying an area is the only full heal; the Inn roll is skipped on that clear
         const inn = isQuiz && !islandCompleted && rollInn();
-        const gold = rollQuestGold(quest);
+        const activity = bump(s.activity);
+        const award = goldAward(quest, { perfect: !!extra?.perfect, streakDays: streak(activity, s.restDays).current });
         set({
           completed: after,
           xp: s.xp + gained,
-          gold: Math.min(GOLD_CAP, s.gold + gold),
-          activity: bump(s.activity),
+          gold: Math.min(GOLD_CAP, s.gold + award.total),
+          activity,
           ...(islandCompleted
             ? {
                 hp: HP_MAX,
                 // regeneration stays paused if a battle is somehow still open
                 hpAt: s.hpAt === null ? null : now,
                 chests: withChests(s.chests, after),
+                merchant: { islandId, arrivedAt: now },
+                // Iron Will: no potion was drunk in any battle of this area (tracked from persist v5)
+                ...(s.potionAreas[islandId] ? {} : { ironWill: { ...s.ironWill, [islandId]: true as const } }),
               }
             : {}),
           ...(inn ? { innOffer: { islandId, afterQuestId: questId, rolledAt: new Date(now).toISOString() } } : {}),
@@ -449,7 +512,11 @@ export const useStore = create<State>()(
             questId,
             questTitle: quest.title,
             xp: gained,
-            gold,
+            gold: award.base,
+            ...(award.perfect + award.streak > 0 ? { bonus: { perfect: award.perfect, streak: award.streak, streakDays: award.streakDays } } : {}),
+            ...(islandCompleted
+              ? { merchant: { islandId, moved: merchantActive(s.merchant, now) && s.merchant!.islandId !== islandId } }
+              : {}),
             islandCompleted,
             unlocked,
             levelUp: newLevel > oldLevel ? newLevel : undefined,
@@ -457,7 +524,7 @@ export const useStore = create<State>()(
             ...(inn ? { inn: true } : {}),
           },
         });
-        return gold;
+        return award;
       },
 
       startBattle: (key, drawn) => {
@@ -497,7 +564,12 @@ export const useStore = create<State>()(
         if (hp >= HP_MAX) return { result: 'full' as const, healed: 0, hp };
         const next = Math.min(HP_MAX, hp + POTION_HP);
         // hpAt stays null while the battle pauses regeneration
-        set({ hp: next, hpAt: s.hpAt === null ? null : Date.now(), items: { ...s.items, potion: s.items.potion - 1 } });
+        set({
+          hp: next,
+          hpAt: s.hpAt === null ? null : Date.now(),
+          items: { ...s.items, potion: s.items.potion - 1 },
+          potionAreas: { ...s.potionAreas, [s.battle.key.split('/')[0]]: true },
+        });
         return { result: 'ok' as const, healed: next - hp, hp: next };
       },
 
@@ -511,12 +583,45 @@ export const useStore = create<State>()(
         return 'ok';
       },
 
-      buyItem: (id) => {
+      drinkEther: () => {
         const s = get();
-        const r = canBuy(s.gold, s.items, id);
+        const now = Date.now();
+        const m = mpNow(s, now);
+        const max = mpMaxFor(s.xp);
+        if (s.items.ether <= 0) return { result: 'none' as const, restored: 0, mp: m.value };
+        if (m.value >= max) return { result: 'full' as const, restored: 0, mp: m.value };
+        const next = Math.min(max, m.value + ETHER_MP);
+        set({ mp: next, mpAt: m.at ?? now, items: { ...s.items, ether: s.items.ether - 1 } });
+        return { result: 'ok' as const, restored: next - m.value, mp: next };
+      },
+
+      buyItem: (id, seller = 'shop') => {
+        const s = get();
+        if (seller === 'merchant' && !merchantActive(s.merchant, Date.now())) {
+          set({ merchant: null });
+          return 'gone';
+        }
+        const price = priceOf(id, seller);
+        const r = canBuy(s.gold, s.items, id, price);
         if (r !== 'ok') return r;
-        set({ gold: s.gold - ITEMS[id].price, items: { ...s.items, [id]: s.items[id] + 1 } });
+        set({ gold: s.gold - price, items: { ...s.items, [id]: s.items[id] + 1 }, purchases: s.purchases + 1 });
         return 'ok';
+      },
+
+      recordAnswer: (qk, qid, right, hinted) =>
+        set((s) => {
+          const k = weakKey(qk, qid);
+          return { weak: { ...s.weak, [k]: applyAnswer(s.weak[k], right, hinted, Date.now()) } };
+        }),
+
+      noteDraw: (key, drawn) => set((s) => ({ lastDraw: { ...s.lastDraw, [key]: drawn } })),
+
+      // a finished training session is real study, so it keeps the streak alive
+      finishTraining: () => set((s) => ({ activity: bump(s.activity) })),
+
+      expireMerchant: () => {
+        const s = get();
+        if (s.merchant && !merchantActive(s.merchant, Date.now())) set({ merchant: null });
       },
 
       endBattle: () => {
@@ -668,7 +773,23 @@ export const useStore = create<State>()(
           s.battle = null; // a v3 battle has no shield flag
           pendingRetroGrant = grant;
         }
+        // v5: weak spots, ether, merchant and shop badges. A shallow merge would leave items.ether undefined, so rebuild it.
+        if (version < 5) {
+          s.items = parseInventory(s.items);
+          // items only come from the shop, so what is owned is a lower bound for First Purchase
+          s.purchases = s.items.potion + s.items.ether + s.items.shield + s.items.tent;
+          s.weak = {};
+          s.merchant = null;
+          s.potionAreas = {};
+          s.ironWill = {};
+        }
         return s as State;
+      },
+      // a future arrival time (clock moved back) is clamped so the merchant can't stay for longer than 48 h
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<State>) };
+        if (merged.merchant) merged.merchant = { ...merged.merchant, arrivedAt: Math.min(Date.now(), merged.merchant.arrivedAt) };
+        return merged;
       },
       // session-only fields stay out of localStorage
       partialize: ({ celebration: _c, menuCursor: _m, hintsBought: _h, toast: _t, ...rest }) => rest,
@@ -678,7 +799,7 @@ export const useStore = create<State>()(
 
 export function exportSave(): string {
   const s = useStore.getState();
-  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes, hp, mp, mpAt, innOffer, chests, restTokens, restDays, gold, items } = s;
+  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes, hp, mp, mpAt, innOffer, chests, restTokens, restDays, gold, items, weak, merchant, purchases, potionAreas, ironWill } = s;
   return JSON.stringify(
     {
       app: 'dev-odyssey',
@@ -702,6 +823,11 @@ export function exportSave(): string {
       restDays,
       gold,
       items,
+      weak,
+      merchant,
+      purchases,
+      potionAreas,
+      ironWill,
     },
     null,
     2,

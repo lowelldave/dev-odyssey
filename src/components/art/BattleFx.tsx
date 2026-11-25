@@ -4,21 +4,23 @@ import { Svg, INK, shade } from './util';
 export interface DamageNumberProps {
   /** shown as "-N" for hurt/hit, "+N" for heal */
   amount: number;
-  kind?: 'hit' | 'hurt' | 'heal' | 'block';
+  kind?: 'hit' | 'hurt' | 'heal' | 'block' | 'mana';
+  /** replaces the default "Deflected!" of kind 'block' */
+  text?: string;
   /** change to retrigger the animation */
   fxKey?: number | string;
   className?: string;
 }
 /** HTML overlay number. kind 'block' ignores `amount` and shows "Deflected!". Position it with the parent (absolute). Rises and fades via transform/opacity only (.jr-dmg). */
-export function DamageNumber({ amount, kind = 'hit', fxKey, className }: DamageNumberProps) {
+export function DamageNumber({ amount, kind = 'hit', fxKey, className, text }: DamageNumberProps) {
   if (kind === 'block') {
     return (
-      <span key={fxKey} className={`jr-dmg jr-dmg-block${className ? ` ${className}` : ''}`} aria-hidden="true">
-        Deflected!
+      <span key={fxKey} className={`jr-dmg jr-dmg-block${text ? ' jr-dmg-note' : ''}${className ? ` ${className}` : ''}`} aria-hidden="true">
+        {text ?? 'Deflected!'}
       </span>
     );
   }
-  const sign = kind === 'heal' ? '+' : '-';
+  const sign = kind === 'heal' || kind === 'mana' ? '+' : '-';
   return (
     <span key={fxKey} className={`jr-dmg jr-dmg-${kind}${className ? ` ${className}` : ''}`} aria-hidden="true">
       {sign}

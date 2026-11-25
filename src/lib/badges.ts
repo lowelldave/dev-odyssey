@@ -17,13 +17,17 @@ interface Input {
   activity: Record<string, number>;
   /** Campfire-bridged days; they count towards the streak badges */
   restDays?: Record<string, true>;
+  /** items bought from either seller */
+  purchases?: number;
+  /** areas purified without drinking a potion */
+  ironWill?: Record<string, true>;
 }
 
 const done = (c: Completed, id: string) => !!ISLAND_MAP[id] && isIslandComplete(c, ISLAND_MAP[id]);
 const regionDone = (c: Completed, region: string) =>
   ISLANDS.filter((i) => i.region === region && isIslandComplete(c, i)).length;
 
-export function computeBadges({ completed, quizAttempts, submissions, activity, restDays }: Input): Badge[] {
+export function computeBadges({ completed, quizAttempts, submissions, activity, restDays, purchases, ironWill }: Input): Badge[] {
   const s = streak(activity, restDays);
   const minutes = Object.values(activity).reduce((a, b) => a + b, 0);
   const passedQuizzes = new Set(quizAttempts.filter((a) => a.passed).map((a) => a.key)).size;
@@ -40,6 +44,8 @@ export function computeBadges({ completed, quizAttempts, submissions, activity, 
   add('perfect', '🎯', 'Critical Hit', 'Score 100% on a quiz.', quizAttempts.some((a) => a.score === 100));
   add('quizmaster', '🧠', 'Sage of Trials', 'Pass 25 quizzes.', passedQuizzes >= 25);
   add('shipwright', '⚔️', 'First Boss Down', 'Pass your first project review.', passedProjects >= 1);
+  add('first-purchase', '🛍️', 'First Purchase', 'Buy any item from a shop.', (purchases ?? 0) > 0);
+  add('iron-will', '💪', 'Iron Will', 'Purify an area without drinking a potion in any of its battles.', Object.keys(ironWill ?? {}).some((id) => ISLAND_MAP[id]));
   add('portfolio', '💼', 'Guild Master', 'Pass 5 portfolio projects.', passedProjects >= 5);
   add('fullstack', '🥞', 'Full-Stack Forged', 'Clear Frontend Forest and Backend Badlands.', done(completed, 'frontend') && done(completed, 'backend'));
   add('container', '🐳', 'Containerized', 'Clear Container Quarry.', done(completed, 'docker'));

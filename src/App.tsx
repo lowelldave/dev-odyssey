@@ -34,6 +34,7 @@ export default function App() {
   // (HP already lost stays lost; a knockout revives), and never leave regeneration paused
   useEffect(() => {
     useStore.getState().endBattle();
+    useStore.getState().expireMerchant();
   }, []);
   // a v3 save that just upgraded: say once what its past victories paid (the Campfire toast may replace it)
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function App() {
   // Campfire: on load and whenever the tab comes back, bridge a short gap in the streak with rest tokens
   useEffect(() => {
     const rest = () => {
+      useStore.getState().expireMerchant();
       const days = useStore.getState().applyCampfire();
       if (days.length) {
         useStore.getState().showToast('You rested by the campfire. Your streak is safe.');

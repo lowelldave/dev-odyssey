@@ -73,6 +73,18 @@ export default function Celebration() {
           {c.gold > 0 && (
             <p className="gold-gain">
               <GoldCoinIcon size={18} /> {island.quests[index]?.boss ? `The ${mons.boss.name} dropped` : 'Found'} {c.gold} gold!
+              {!c.bonus && <span className="muted small"> (Purse: {purse.toLocaleString()})</span>}
+            </p>
+          )}
+          {c.bonus && c.bonus.perfect > 0 && (
+            <p className="gold-gain gold-bonus">
+              <GoldCoinIcon size={18} /> Flawless victory: +{c.bonus.perfect} bonus gold!
+              {!c.bonus.streak && <span className="muted small"> (Purse: {purse.toLocaleString()})</span>}
+            </p>
+          )}
+          {c.bonus && c.bonus.streak > 0 && (
+            <p className="gold-gain gold-bonus">
+              <GoldCoinIcon size={18} /> {c.bonus.streakDays}-day streak bonus: +{c.bonus.streak} gold!
               <span className="muted small"> (Purse: {purse.toLocaleString()})</span>
             </p>
           )}
@@ -85,6 +97,13 @@ export default function Celebration() {
           {c.islandCompleted && (
             <p>
               The corruption lifts from {c.islandCompleted.emoji} {c.islandCompleted.name}. Its people return!
+            </p>
+          )}
+          {c.merchant && (
+            <p>
+              {c.merchant.moved
+                ? `The travelling merchant packs up and moves to ${ISLAND_MAP[c.merchant.islandId]?.name}: 25% off for 48 hours.`
+                : `A travelling merchant follows you to ${ISLAND_MAP[c.merchant.islandId]?.name}: everything 25% off for 48 hours.`}
             </p>
           )}
           {c.unlocked.length > 0 && <p>New roads have opened!</p>}

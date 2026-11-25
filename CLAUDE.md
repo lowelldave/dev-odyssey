@@ -50,6 +50,7 @@ Stack: Vite 5, React 18, TypeScript 5 (strict), react-router-dom 6 (`HashRouter`
   - XP values and levels.
   - Quest and island state: `islandState` → `locked | open | active | complete`.
   - Unlocking (`isIslandUnlocked`, `newlyUnlockedBy`) and the streak.
+- Persist v5 adds `weak` (miss stats per question, keyed `island/quest#qid` where qid = FNV-1a hash of the normalised question text, `lib/weak.ts`), `merchant` (the 48 h, 25%-off travelling merchant set on purification), `purchases`, `potionAreas` and `ironWill` (the First Purchase and Iron Will badges). Training mode (`BattlePage` state `mode: 'training'`) never creates a `battle` record and records nothing except weak-spot stats and streak activity.
 - `src/lib/github.ts` runs boss-project checks against the GitHub REST API: the repo meta, a recursive tree, raw file contents and a commit count from the `Link` header. An optional user token comes from the store. Rule kinds are defined in `types.ts` (`file`, `contains`, `dep`, `readme`, `commits`, `homepage`, `description`, `fileCount`).
 - `src/lib/sound.ts` synthesises RPG sound effects with Web Audio (no audio files) and respects `store.sound`. `App.tsx` installs one global click listener that plays a sound for buttons and links. Elements choose a sound with `data-sfx="confirm|back|toggle|none"`.
 

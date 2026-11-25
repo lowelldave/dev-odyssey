@@ -4,6 +4,7 @@ import { GoldCoinIcon, PotionIcon, ShieldIcon, TentIcon } from './art';
 
 const ICONS = {
   potion: <PotionIcon size={16} />,
+  ether: <PotionIcon size={16} tone="ether" />,
   shield: <ShieldIcon size={16} />,
   tent: <TentIcon size={16} />,
 } as const;

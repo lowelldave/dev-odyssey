@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { monstersOf } from '../../data/monsters';
 import { armBattle } from '../../lib/battleNav';
-import { HINT_COST, ITEMS, QUIZ_DRAW, neededToPass, partyStats, questKey, safeMisses } from '../../lib/game';
+import { HINT_COST, ITEMS, QUIZ_DRAW, neededToPass, partyStats, questKey, safeMisses, weakCountFor } from '../../lib/game';
 import { sfx } from '../../lib/sound';
 import { useNow } from '../../lib/useNow';
 import { useStore } from '../../store';
@@ -9,6 +9,7 @@ import type { Island, Quest, QuizCheckpoint } from '../../types';
 import { shade } from '../art/util';
 import { Monster } from '../AreaScene';
 import { PotionIcon, ShieldIcon } from '../art';
+import EtherButton from '../EtherButton';
 import TentButton from '../TentButton';
 import StatBar from '../ui/StatBar';
 
@@ -29,15 +30,17 @@ export default function BattlePrep({ island, quest, checkpoint }: { island: Isla
   const mpAt = useStore((s) => s.mpAt);
   const xp = useStore((s) => s.xp);
   const items = useStore((s) => s.items);
+  const weak = useStore((s) => s.weak);
+  const weakCount = weakCountFor(weak, key, quest);
   const now = useNow(1000);
   const party = partyStats({ hp, hpAt, mp, mpAt, xp }, now);
   const afford = safeMisses(party.hp.value);
-  const ownsAny = items.potion + items.shield + items.tent > 0;
+  const ownsAny = items.potion + items.ether + items.shield + items.tent > 0;
   const needsRest = party.hp.value < party.hp.max || party.mp.value < party.mp.max;
 
-  const begin = () => {
+  const begin = (mode: 'battle' | 'training' = 'battle') => {
     sfx('confirm');
-    navigate(`/island/${island.id}/quest/${quest.id}/battle`, { state: { nonce: armBattle(key) } });
+    navigate(`/island/${island.id}/quest/${quest.id}/battle`, { state: { nonce: armBattle(key), mode } });
   };
 
   return (
@@ -53,7 +56,8 @@ export default function BattlePrep({ island, quest, checkpoint }: { island: Isla
           <p>
             {n} question{n === 1 ? '' : 's'} drawn from a pool of {pool.length} · {need} correct to win.
             {n < QUIZ_DRAW && ' This trial is still growing, so it asks fewer questions.'}
-            {alreadyDone && ' You already won this one, so retakes are just for practice.'}
+            {weakCount > 0 && ` · ${weakCount} weak spot${weakCount === 1 ? '' : 's'}`}
+            {alreadyDone && ' You already won this one. Replays cost HP and pay nothing. Training is free and leads with your weak spots.'}
           </p>
         </div>
       </div>
@@ -74,23 +78,32 @@ export default function BattlePrep({ island, quest, checkpoint }: { island: Isla
             <span>
               <ShieldIcon size={16} broken={items.shield === 0} /> {items.shield > 0 ? 'Auto-shield ready (equips automatically)' : 'No auto-shield'}
             </span>
+            <span>
+              <PotionIcon size={16} tone="ether" empty={items.ether === 0} /> Ethers ×{items.ether}/{ITEMS.ether.max}
+            </span>
+            {items.ether > 0 && party.mp.value < party.mp.max && <EtherButton compact />}
             {items.tent > 0 && needsRest && <TentButton compact />}
           </>
         ) : (
           <span className="muted small">
-            Buy potions and shields at the shop near Web Village (<Link to="/">world map</Link>).
+            Buy potions, ethers and shields at the shop near Web Village (<Link to="/">world map</Link>).
           </span>
         )}
       </div>
       {innOffer && (
         <p className="muted small">
-          A wayside Inn is open on the <Link to={`/island/${innOffer.islandId}`}>quest board</Link>. Starting a battle closes it.
+          A wayside Inn is open on the <Link to={`/island/${innOffer.islandId}`}>quest board</Link>. Starting a battle (not Training) closes it.
         </p>
       )}
       <div className="btn-row">
-        <button className="btn btn-primary" onClick={begin} disabled={!pool.length} data-sfx="none">
-          ⚔️ {alreadyDone ? 'Practice battle' : 'Begin battle'}
+        <button className="btn btn-primary" onClick={() => begin('battle')} disabled={!pool.length} data-sfx="none">
+          ⚔️ {alreadyDone ? 'Replay battle' : 'Begin battle'}
         </button>
+        {alreadyDone && (
+          <button className="btn" onClick={() => begin('training')} disabled={!pool.length} data-sfx="none">
+            🎯 Training <span className="btn-sub">No HP lost, free hints, no rewards</span>
+          </button>
+        )}
       </div>
     </div>
   );

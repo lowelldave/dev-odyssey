@@ -1,14 +1,12 @@
 import type { Island, QuizQuestion, Region } from '../types';
-import { QUIZ_POOL_TARGET } from '../lib/quiz';
+import { QUIZ_POOL_TARGET, normaliseQuestion, questionId } from '../lib/quiz';
 import { AI } from './ai';
 import { CORE } from './core';
 import { POLYGLOT } from './polyglot';
 import { STACKS } from './stacks';
 import { TUTORIALS } from './tutorials';
 
-/** Question text compared case-, spacing- and punctuation-insensitively. */
-export const normaliseQuestion = (text: string) =>
-  text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export { normaliseQuestion };
 
 /** Union of two question lists, de-duplicated by normalised text; the first list's wording wins. */
 function mergePools(preferred: QuizQuestion[], others: QuizQuestion[]): QuizQuestion[] {
@@ -62,6 +60,7 @@ if (import.meta.env.DEV) {
         const pool = quest.checkpoint.questions;
         if (pool.length < QUIZ_POOL_TARGET) warnings.push(`${where}: pool has ${pool.length} of ${QUIZ_POOL_TARGET} questions`);
         const texts = new Set<string>();
+        const byId = new Map<string, { text: string; n: number }>();
         pool.forEach((q, i) => {
           if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length) warnings.push(`${where} q${i + 1}: bad answer index`);
           if (!q.hint) warnings.push(`${where} q${i + 1}: missing hint`);
@@ -69,6 +68,11 @@ if (import.meta.env.DEV) {
           const key = normaliseQuestion(q.question);
           if (texts.has(key)) warnings.push(`${where} q${i + 1}: duplicate question text`);
           texts.add(key);
+          // weak-spot stats are keyed by this id, so two different questions must not share one
+          const id = questionId(q.question);
+          const other = byId.get(id);
+          if (other && other.text !== key) problems.push(`${where} q${i + 1}: question id collision with q${other.n}`);
+          else byId.set(id, { text: key, n: i + 1 });
         });
       }
     });

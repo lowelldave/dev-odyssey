@@ -49,6 +49,35 @@ if (import.meta.env.DEV) {
     giveItem: (id: game.ItemId, n = 1) =>
       useStore.setState((s) => ({ items: { ...s.items, [id]: Math.min(game.ITEMS[id].max, Math.max(0, n)) } })),
     clearItems: () => useStore.setState({ items: { ...game.EMPTY_INVENTORY } }),
+    /** put the travelling merchant at an area, arrived `hoursAgo` hours ago */
+    spawnMerchant: (islandId = 'web', hoursAgo = 0) =>
+      useStore.setState({ merchant: { islandId, arrivedAt: Date.now() - hoursAgo * 3.6e6 } }),
+    clearMerchant: () => useStore.setState({ merchant: null }),
+    /** mark weak spots on a quest: one pool index, or 'all' */
+    setWeak: (islandId: string, questId: string, which: number | 'all' = 'all', w = 2) => {
+      const quest = ISLAND_MAP[islandId]?.quests.find((q) => q.id === questId);
+      if (!quest || quest.checkpoint.type !== 'quiz') return;
+      const qk = game.questKey(islandId, questId);
+      const now = Date.now();
+      const add = Object.fromEntries(
+        quest.checkpoint.questions
+          .map((q, i) => [i, q] as const)
+          .filter(([i]) => which === 'all' || i === which)
+          .map(([, q]) => [game.weakKey(qk, game.questionId(q.question)), { seen: 1, missed: 1, w, at: now }]),
+      );
+      useStore.setState((s) => ({ weak: { ...s.weak, ...add } }));
+    },
+    clearWeak: () => useStore.setState({ weak: {} }),
+    setPurchases: (n: number) => useStore.setState({ purchases: Math.max(0, Math.round(n)) }),
+    /** pretend a potion was drunk in this area, so purifying it earns no Iron Will */
+    taintArea: (islandId: string) => useStore.setState((s) => ({ potionAreas: { ...s.potionAreas, [islandId]: true } })),
+    clearBadgesSeen: (ids?: string[]) =>
+      useStore.setState((s) => {
+        if (!ids) return { badgesSeen: {} };
+        const next = { ...s.badgesSeen };
+        for (const id of ids) delete next[id];
+        return { badgesSeen: next };
+      }),
     resetIntro: () => useStore.setState({ dialoguesSeen: {} }),
   };
   Object.assign(window, { __store: useStore, __game: game, __dev: dev });

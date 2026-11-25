@@ -6,11 +6,13 @@ import { tomeOf } from '../../lib/tome';
 import { CHEST_CLOSED, useStore } from '../../store';
 import { Chest, PotionIcon, RestTokenIcon, ShieldIcon, TentIcon, TomeIcon } from '../art';
 import Purse from '../Purse';
+import EtherButton from '../EtherButton';
 import TentButton from '../TentButton';
 
-const ITEM_ICONS = { potion: <PotionIcon size={28} />, shield: <ShieldIcon size={28} />, tent: <TentIcon size={28} /> } as const;
+const ITEM_ICONS = { potion: <PotionIcon size={28} />, ether: <PotionIcon size={28} tone="ether" />, shield: <ShieldIcon size={28} />, tent: <TentIcon size={28} /> } as const;
 const ITEM_NOTES: Record<ItemId, string> = {
   potion: 'Drink one per question during a battle.',
+  ether: 'One per question in battle; also usable from the menu.',
   shield: 'Equips itself and is used up when it deflects a hit.',
   tent: 'Cannot be used during a battle.',
 };
@@ -41,6 +43,7 @@ export default function ItemsWindow() {
               <p className="muted small">{ITEM_NOTES[id]}</p>
             </div>
             {id === 'tent' && <TentButton compact />}
+            {id === 'ether' && <EtherButton compact />}
           </li>
         ))}
         <li>
