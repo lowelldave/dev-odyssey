@@ -12,10 +12,13 @@ export interface QuizQuestion {
   /** index into options */
   answer: number;
   explain?: string;
+  /** Written hint, bought with MP during a battle. */
+  hint?: string;
 }
 
 export interface QuizCheckpoint {
   type: 'quiz';
+  /** The question pool; each battle draws a subset (see `drawQuestions`). */
   questions: QuizQuestion[];
   passPercent: number;
 }
@@ -58,7 +61,7 @@ export interface Tutorial {
   steps: TutorialStep[];
   mistakes?: string[];
   recap?: string[];
-  /** Replaces the quest's original quiz questions (tutorial quests end with 5). */
+  /** Added to the quest's question pool (de-duplicated by text; the tutorial's wording wins). */
   quiz?: QuizQuestion[];
 }
 

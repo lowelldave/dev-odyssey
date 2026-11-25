@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type CheckReport, parseRepoUrl, runProjectCheck } from '../lib/github';
 import { questKey } from '../lib/game';
+import { monstersOf } from '../data/monsters';
+import { useReducedMotion } from '../lib/motion';
 import { sfx } from '../lib/sound';
 import { useStore } from '../store';
 import type { Island, ProjectCheckpoint, Quest } from '../types';
+import { BattleBackdrop, Bar } from './art';
+import { shade } from './art/util';
+import { Monster } from './AreaScene';
+import { Hero } from './Overworld';
 
 export default function ProjectChecker({
   island,
@@ -29,18 +35,57 @@ export default function ProjectChecker({
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [report, setReport] = useState<CheckReport | null>(null);
+  // the report arrives in one piece; it is revealed one check at a time (presentation only: no HP is lost here)
+  const [revealed, setRevealed] = useState(0);
+  const reduced = useReducedMotion();
+  const pending = useRef<(() => void) | null>(null);
+  const boss = monstersOf(island.id).boss;
+
+  useEffect(() => {
+    if (!report) return;
+    const total = report.results.length;
+    const finish = () => {
+      if (!pending.current) return;
+      pending.current = null;
+      if (report.passed) completeQuest(island.id, quest.id, { score: report.score, repo: report.repo });
+    };
+    pending.current = finish;
+    if (reduced || total === 0) {
+      setRevealed(total);
+      finish();
+      return;
+    }
+    setRevealed(0);
+    let n = 0;
+    const id = window.setInterval(() => {
+      n += 1;
+      setRevealed(n);
+      sfx(report.results[n - 1]?.passed ? 'hit' : 'click');
+      if (n >= total) {
+        window.clearInterval(id);
+        finish();
+      }
+    }, 380);
+    // leaving mid-reveal must not lose the clear
+    return () => {
+      window.clearInterval(id);
+      finish();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report]);
 
   const run = async () => {
     setError('');
     setReport(null);
+    setRevealed(0);
     setBusy(true);
     try {
       const rep = await runProjectCheck(url, checkpoint, token, setProgress);
       setReport(rep);
       recordSubmission({ key, repo: rep.repo, score: rep.score, passed: rep.passed });
+      // the clear is applied once the reveal finishes; a failed check never touches HP
       if (rep.passed) {
         if (alreadyDone) sfx('confirm');
-        completeQuest(island.id, quest.id, { score: rep.score, repo: rep.repo });
       } else sfx('error');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -50,6 +95,9 @@ export default function ProjectChecker({
     }
   };
 
+  const total = report?.results.length ?? 0;
+  const passedSoFar = report ? report.results.slice(0, revealed).filter((r) => r.passed).length : 0;
+  const bossHp = report ? (report.passed && revealed >= total ? 0 : Math.max(report.passed ? 0 : 5, Math.round(100 * (1 - passedSoFar / Math.max(1, total))))) : 100;
   const required = checkpoint.rules.filter((r) => !r.optional).length;
 
   return (
@@ -114,6 +162,19 @@ export default function ProjectChecker({
         {error && <p className="error">⚠️ {error}</p>}
       </form>
 
+      {(busy || report) && (
+        <div className="jr-battle-stage battle-stage boss-stage" aria-hidden="true">
+          <BattleBackdrop kind="lair" />
+          <svg className="battle-svg" viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">
+            <g transform="translate(205 130) scale(1.7)">
+              <Monster family={boss.family} c={shade(island.color, -0.5)} boss name={boss.name} x={0} y={0} />
+            </g>
+            <g transform="translate(70 132) scale(1.6)">
+              <Hero x={0} y={0} />
+            </g>
+          </svg>
+        </div>
+      )}
       {report && (
         <div className={`report ${report.passed ? 'pass' : 'fail'}`}>
           <div className="report-head">
@@ -132,8 +193,12 @@ export default function ProjectChecker({
               ⚠️ {report.warning}
             </p>
           )}
+          <div className="boss-hp">
+            <strong>{boss.name}</strong>
+            <Bar kind="monster" value={bossHp} max={100} label={`${boss.name} HP`} />
+          </div>
           <ul className="checks">
-            {report.results.map((r, i) => (
+            {report.results.slice(0, revealed).map((r, i) => (
               <li key={i} className={r.passed ? 'ok' : r.optional ? 'warn' : 'bad'}>
                 <span className="check-icon">{r.passed ? '✅' : r.optional ? '⚠️' : '❌'}</span>
                 <span>
@@ -144,7 +209,11 @@ export default function ProjectChecker({
               </li>
             ))}
           </ul>
-          {report.passed ? (
+          {revealed < report.results.length ? (
+            <p className="muted" role="status">
+              Reading the checks…
+            </p>
+          ) : report.passed ? (
             <Link className="btn btn-primary" to={next.href} data-sfx="confirm">
               ▶ {next.label}
             </Link>

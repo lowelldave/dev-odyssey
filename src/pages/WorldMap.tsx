@@ -1,5 +1,10 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ChestBody, SaveCrystalBody } from '../components/art';
+import MapMenu from '../components/menu/MapMenu';
+import PartyPanel from '../components/PartyPanel';
+import { isBackupDue } from '../lib/save';
+import { CHEST_CLOSED } from '../store';
 import { AreaScene, PLOT, SceneDefs, type SceneInfo, sceneInfo } from '../components/AreaScene';
 import {
   type Deco,
@@ -104,12 +109,15 @@ export default function WorldMap() {
     <div className="world">
       <section className="world-head window">
         <div>
-          <p className="eyebrow">Welcome back, {name}</p>
+          <p className="eyebrow">{doneQuests > 0 ? `Welcome back, ${name}` : `Welcome, ${name}`}</p>
           <h1>The Realm of Devoria</h1>
           <p className="muted">
             {ISLANDS.length} areas · {TOTAL_QUESTS} quests · {doneQuests} completed. Clear every quest in an area, including its boss battle, to
             open the roads to new lands.
           </p>
+        </div>
+        <div className="world-party">
+          <PartyPanel />
         </div>
         <div className="world-actions">
           {next && (
@@ -117,6 +125,7 @@ export default function WorldMap() {
               ▶ Continue: {next.quest.title}
             </Link>
           )}
+          <MapMenu />
           <div className="seg">
             <button className={view === 'map' ? 'on' : ''} onClick={() => setViewSaved('map')}>
               🗺️ World
@@ -574,6 +583,8 @@ const AreaNode = memo(function AreaNode({
   const labelW = Math.max(130, label.length * 12.5 + 70);
   const sealed = state === 'locked';
   const completed = useStore((s) => s.completed);
+  const chest = useStore((s) => s.chests[island.id]);
+  const backupDue = useStore((s) => isBackupDue(s.completed, s.lastBackupAt));
 
   return (
     <g
@@ -609,6 +620,19 @@ const AreaNode = memo(function AreaNode({
             </text>
           </g>
         </g>
+      )}
+
+      {state === 'complete' && (
+        <>
+          <g transform={`translate(${-PLOT * 0.62}, ${PLOT * 0.2})`} aria-hidden="true" className="map-crystal">
+            <SaveCrystalBody due={backupDue} />
+          </g>
+          {chest !== undefined && (
+            <g transform={`translate(${PLOT * 0.62}, ${PLOT * 0.26})`} aria-hidden="true" className="map-chest">
+              <ChestBody state={chest === CHEST_CLOSED ? 'closed' : 'spent'} />
+            </g>
+          )}
+        </>
       )}
 
       {state === 'complete' && (

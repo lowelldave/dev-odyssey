@@ -1,11 +1,29 @@
-import type { Island, Region } from '../types';
+import type { Island, QuizQuestion, Region } from '../types';
+import { QUIZ_POOL_TARGET } from '../lib/quiz';
 import { AI } from './ai';
 import { CORE } from './core';
 import { POLYGLOT } from './polyglot';
 import { STACKS } from './stacks';
 import { TUTORIALS } from './tutorials';
 
-/** Attach step-by-step tutorials; a tutorial's quiz replaces the original questions. */
+/** Question text compared case-, spacing- and punctuation-insensitively. */
+export const normaliseQuestion = (text: string) =>
+  text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/** Union of two question lists, de-duplicated by normalised text; the first list's wording wins. */
+function mergePools(preferred: QuizQuestion[], others: QuizQuestion[]): QuizQuestion[] {
+  const seen = new Set<string>();
+  const out: QuizQuestion[] = [];
+  for (const question of [...preferred, ...others]) {
+    const key = normaliseQuestion(question.question);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(question);
+  }
+  return out;
+}
+
+/** Attach step-by-step tutorials; a tutorial's quiz is added to the quest's question pool. */
 function withTutorials(islands: Island[]): Island[] {
   return islands.map((island) => ({
     ...island,
@@ -13,7 +31,9 @@ function withTutorials(islands: Island[]): Island[] {
       const tutorial = TUTORIALS[`${island.id}/${quest.id}`];
       if (!tutorial) return quest;
       const checkpoint =
-        tutorial.quiz && quest.checkpoint.type === 'quiz' ? { ...quest.checkpoint, questions: tutorial.quiz } : quest.checkpoint;
+        tutorial.quiz && quest.checkpoint.type === 'quiz'
+          ? { ...quest.checkpoint, questions: mergePools(tutorial.quiz, quest.checkpoint.questions) }
+          : quest.checkpoint;
       return { ...quest, tutorial, checkpoint };
     }),
   }));
@@ -26,6 +46,8 @@ export const ISLAND_MAP: Record<string, Island> = Object.fromEntries(ISLANDS.map
 /** Dev-only sanity checks for hand-written content. */
 if (import.meta.env.DEV) {
   const problems: string[] = [];
+  // pools are still being filled, so these are warnings, not errors
+  const warnings: string[] = [];
   const ids = new Set<string>();
   for (const island of ISLANDS) {
     if (ids.has(island.id)) problems.push(`duplicate island id ${island.id}`);
@@ -36,8 +58,17 @@ if (import.meta.env.DEV) {
       if (qids.has(quest.id)) problems.push(`${island.id}: duplicate quest ${quest.id}`);
       qids.add(quest.id);
       if (quest.checkpoint.type === 'quiz') {
-        quest.checkpoint.questions.forEach((q, i) => {
-          if (q.answer < 0 || q.answer >= q.options.length) problems.push(`${island.id}/${quest.id} q${i + 1}: bad answer index`);
+        const where = `${island.id}/${quest.id}`;
+        const pool = quest.checkpoint.questions;
+        if (pool.length < QUIZ_POOL_TARGET) warnings.push(`${where}: pool has ${pool.length} of ${QUIZ_POOL_TARGET} questions`);
+        const texts = new Set<string>();
+        pool.forEach((q, i) => {
+          if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length) warnings.push(`${where} q${i + 1}: bad answer index`);
+          if (!q.hint) warnings.push(`${where} q${i + 1}: missing hint`);
+          if (!q.explain) warnings.push(`${where} q${i + 1}: missing explain`);
+          const key = normaliseQuestion(q.question);
+          if (texts.has(key)) warnings.push(`${where} q${i + 1}: duplicate question text`);
+          texts.add(key);
         });
       }
     });
@@ -49,6 +80,12 @@ if (import.meta.env.DEV) {
   }
   if (problems.length) console.error('[dev-odyssey] content problems:\n' + problems.join('\n'));
   else console.info(`[dev-odyssey] content OK: ${ISLANDS.length} islands`);
+  if (warnings.length) {
+    // one grouped, collapsed entry: with unfinished pools this list is long
+    console.groupCollapsed(`[dev-odyssey] content warnings: ${warnings.length}`);
+    console.warn(warnings.join('\n'));
+    console.groupEnd();
+  }
 }
 
 export const REGIONS: Record<Region, { name: string; desc: string; color: string }> = {

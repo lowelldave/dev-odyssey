@@ -91,7 +91,7 @@ Stack: Vite 5, React 18, TypeScript 5 (strict), react-router-dom 6 (`HashRouter`
 
 For feature work, use the project agents in this order:
 1. **planner** (Opus, read-only): researches comparable apps and writes the implementation plan.
-2. **designer** (Sonnet): creates original SVG and CSS assets. It shows a preview in `design-previews/` (git-ignored) for approval first.
+2. **designer** (Sonnet): gathers references in Canva (mood boards and generated concept images, kept in the Canva folder `Dev Odyssey references`), then creates original SVG and CSS assets. It shows a preview in `design-previews/` (git-ignored) for approval first.
 3. **coder** (Sonnet): implements the plan and the assets.
 4. **tester** (Sonnet): tests everything in the plan, plus actions, error paths, input edge cases and refresh/persistence, in the running app. It never edits app code.
 

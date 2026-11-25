@@ -57,7 +57,25 @@ function play(notes: Note[]) {
   }
 }
 
-export type Sfx = 'click' | 'confirm' | 'back' | 'error' | 'victory' | 'levelup' | 'toggle' | 'purify';
+export type Sfx =
+  | 'click'
+  | 'confirm'
+  | 'back'
+  | 'error'
+  | 'victory'
+  | 'levelup'
+  | 'toggle'
+  | 'purify'
+  | 'cursor'
+  | 'hit'
+  | 'hurt'
+  | 'defeat'
+  | 'hint'
+  | 'inn'
+  | 'campfire'
+  | 'chest'
+  | 'save'
+  | 'text';
 
 const SOUNDS: Record<Sfx, () => void> = {
   // soft two-step menu blip
@@ -109,6 +127,55 @@ const SOUNDS: Record<Sfx, () => void> = {
       { freq: 1568, at: 0.8, dur: 0.9, vol: 0.06, type: 'triangle' },
       { freq: 1175, at: 0.8, dur: 0.9, vol: 0.06, type: 'sine' },
     ]),
+  cursor: () => play([{ freq: 1100, dur: 0.03, vol: 0.06, type: 'square' }]),
+  // a sword landing
+  hit: () =>
+    play([
+      { freq: 180, dur: 0.1, vol: 0.14, type: 'sawtooth', to: 70 },
+      { freq: 900, dur: 0.05, vol: 0.08, type: 'square', to: 400 },
+    ]),
+  // the hero is struck
+  hurt: () =>
+    play([
+      { freq: 300, dur: 0.14, vol: 0.14, type: 'square', to: 120 },
+      { freq: 120, at: 0.1, dur: 0.16, vol: 0.12, type: 'sawtooth', to: 70 },
+    ]),
+  // slow falling line
+  defeat: () => play([392, 330, 262, 196, 147].map((freq, i) => ({ freq, at: i * 0.2, dur: 0.3, vol: 0.12, type: 'triangle' as const }))),
+  hint: () =>
+    play([
+      { freq: 1047, dur: 0.08, vol: 0.09, type: 'sine' },
+      { freq: 1568, at: 0.07, dur: 0.18, vol: 0.09, type: 'sine' },
+    ]),
+  // warm restful chord
+  inn: () =>
+    play([
+      { freq: 262, dur: 0.9, vol: 0.09, type: 'sine' },
+      { freq: 330, at: 0.12, dur: 0.9, vol: 0.09, type: 'sine' },
+      { freq: 392, at: 0.24, dur: 0.9, vol: 0.09, type: 'sine' },
+      { freq: 523, at: 0.36, dur: 1.0, vol: 0.08, type: 'triangle' },
+    ]),
+  // crackle, then a soft chord
+  campfire: () =>
+    play([
+      { freq: 90, dur: 0.05, vol: 0.07, type: 'sawtooth', to: 400 },
+      { freq: 130, at: 0.08, dur: 0.05, vol: 0.06, type: 'sawtooth', to: 300 },
+      { freq: 330, at: 0.2, dur: 0.6, vol: 0.07, type: 'sine' },
+      { freq: 494, at: 0.3, dur: 0.6, vol: 0.06, type: 'sine' },
+    ]),
+  chest: () =>
+    play([
+      { freq: 200, dur: 0.08, vol: 0.1, type: 'square', to: 300 },
+      ...[659, 784, 988, 1319].map((freq, i) => ({ freq, at: 0.1 + i * 0.07, dur: 0.14, vol: 0.09, type: 'triangle' as const })),
+    ]),
+  save: () =>
+    play([
+      { freq: 988, dur: 0.1, vol: 0.09, type: 'sine' },
+      { freq: 1319, at: 0.1, dur: 0.1, vol: 0.09, type: 'sine' },
+      { freq: 1976, at: 0.2, dur: 0.3, vol: 0.08, type: 'sine' },
+    ]),
+  // dialogue typewriter blip (throttled in sfx)
+  text: () => play([{ freq: 520, dur: 0.02, vol: 0.04, type: 'square' }]),
   // sparkly fast run upwards
   levelup: () =>
     play(
@@ -122,8 +189,15 @@ const SOUNDS: Record<Sfx, () => void> = {
     ),
 };
 
+let lastText = 0;
+
 export function sfx(name: Sfx) {
   try {
+    if (name === 'text') {
+      const t = performance.now();
+      if (t - lastText < 70) return;
+      lastText = t;
+    }
     SOUNDS[name]();
   } catch {
     /* audio is a nicety; never let it break the app */

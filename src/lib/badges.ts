@@ -15,14 +15,16 @@ interface Input {
   quizAttempts: QuizAttempt[];
   submissions: Submission[];
   activity: Record<string, number>;
+  /** Campfire-bridged days; they count towards the streak badges */
+  restDays?: Record<string, true>;
 }
 
 const done = (c: Completed, id: string) => !!ISLAND_MAP[id] && isIslandComplete(c, ISLAND_MAP[id]);
 const regionDone = (c: Completed, region: string) =>
   ISLANDS.filter((i) => i.region === region && isIslandComplete(c, i)).length;
 
-export function computeBadges({ completed, quizAttempts, submissions, activity }: Input): Badge[] {
-  const s = streak(activity);
+export function computeBadges({ completed, quizAttempts, submissions, activity, restDays }: Input): Badge[] {
+  const s = streak(activity, restDays);
   const minutes = Object.values(activity).reduce((a, b) => a + b, 0);
   const passedQuizzes = new Set(quizAttempts.filter((a) => a.passed).map((a) => a.key)).size;
   const passedProjects = new Set(submissions.filter((x) => x.passed).map((x) => x.key)).size;

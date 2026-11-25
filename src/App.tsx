@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Celebration from './components/Celebration';
 import Hud from './components/Hud';
+import Onboarding from './components/Onboarding';
+import ToastHost from './components/ui/Toast';
 import Dashboard from './pages/Dashboard';
 import IslandPage from './pages/IslandPage';
 import Profile from './pages/Profile';
@@ -27,6 +29,33 @@ export default function App() {
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
   }, []);
+  // a battle still open on load was abandoned by a refresh: close it without recording anything
+  // (HP already lost stays lost; a knockout revives), and never leave regeneration paused
+  useEffect(() => {
+    useStore.getState().endBattle();
+  }, []);
+  // Campfire: on load and whenever the tab comes back, bridge a short gap in the streak with rest tokens
+  useEffect(() => {
+    const rest = () => {
+      const days = useStore.getState().applyCampfire();
+      if (days.length) {
+        useStore.getState().showToast('You rested by the campfire. Your streak is safe.');
+        sfx('campfire');
+      }
+    };
+    rest();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') rest();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+  // the opt-in pixel window skin
+  const uiSkin = useStore((s) => s.uiSkin);
+  useEffect(() => {
+    document.documentElement.classList.toggle('skin-pixel', uiSkin === 'pixel');
+    return () => document.documentElement.classList.remove('skin-pixel');
+  }, [uiSkin]);
   useEffect(() => {
     window.scrollTo(0, 0);
     useStore.getState().dismissCelebration();
@@ -46,6 +75,8 @@ export default function App() {
         </Routes>
       </main>
       <Celebration />
+      <Onboarding />
+      <ToastHost />
     </div>
   );
 }

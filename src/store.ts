@@ -1,7 +1,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ISLANDS, ISLAND_MAP } from './data';
-import { type Completed, MAX_SESSION_MINUTES, XP, isIslandComplete, levelInfo, newlyUnlockedBy, questKey, questXp, today, toDay } from './lib/game';
+import { computeBadges } from './lib/badges';
+import {
+  type Completed,
+  HINT_COST,
+  HP_MAX,
+  HP_REVIVE,
+  INN_HP,
+  INN_MP,
+  MAX_SESSION_MINUTES,
+  REST_TOKENS_MAX,
+  XP,
+  campfireDays,
+  isIslandComplete,
+  levelInfo,
+  maxMp,
+  newlyUnlockedBy,
+  questKey,
+  questXp,
+  regenNow,
+  rollInn,
+  rollMissDamage,
+  today,
+  toDay,
+} from './lib/game';
 import type { Island } from './types';
 
 export interface QuizAttempt {
@@ -27,7 +50,29 @@ export interface Celebration {
   islandCompleted?: Island;
   unlocked: Island[];
   levelUp?: number;
+  /** the area was purified, so HP was restored to full */
+  hpRestored?: boolean;
+  /** a wayside Inn was rolled for this clear */
+  inn?: boolean;
 }
+
+/** A stored wayside Inn offer: rolled once on a passed quiz, never re-rolled on refresh. */
+export interface InnOffer {
+  islandId: string;
+  afterQuestId: string;
+  rolledAt: string;
+}
+
+export interface Toast {
+  id: number;
+  text: string;
+}
+
+export type UiSkin = 'classic' | 'pixel';
+export type SpriteStyle = 'auto' | 'vector' | 'pixel';
+
+/** Chest state: an unopened chest, or the ISO time it was opened. One chest per purified area. */
+export const CHEST_CLOSED = 'closed';
 
 interface State {
   name: string;
@@ -46,6 +91,50 @@ interface State {
   /** areas whose purification animation has already played on the map */
   purifiedSeen: Record<string, true>;
 
+  /** HP and its regeneration timestamp; `hpAt` is null while a battle pauses regeneration. */
+  hp: number;
+  hpAt: number | null;
+  mp: number;
+  mpAt: number;
+  /** the battle in progress, kept so a refresh mid-battle can be detected */
+  battle: { key: string; startedAt: number } | null;
+  /** questKey -> pool indices of the last attempt, so a retake prefers other questions */
+  lastDraw: Record<string, number[]>;
+  innOffer: InnOffer | null;
+  lastBackupAt: string | null;
+  /** islandId -> CHEST_CLOSED or the ISO time it was opened */
+  chests: Record<string, string>;
+  /** Campfire: rest tokens (max REST_TOKENS_MAX) and the days they bridged */
+  restTokens: number;
+  restDays: Record<string, true>;
+  badgesSeen: Record<string, true>;
+  dialoguesSeen: Record<string, true>;
+  uiSkin: UiSkin;
+  spriteStyle: SpriteStyle;
+
+  /* session only: never persisted */
+  menuCursor: string | null;
+  /** hint keys ("island/quest#poolIndex") paid for in the current battle */
+  hintsBought: Record<string, true>;
+  toast: Toast | null;
+
+  startBattle: (key: string, drawn: number[]) => void;
+  takeHit: () => { damage: number; hp: number; defeated: boolean };
+  endBattle: () => void;
+  spendMp: (cost: number) => boolean;
+  buyHint: (hintKey: string) => 'ok' | 'owned' | 'no-mp';
+  redeemInn: () => boolean;
+  openChest: (islandId: string) => boolean;
+  applyCampfire: () => string[];
+  setMenuCursor: (id: string | null) => void;
+  showToast: (text: string) => void;
+  dismissToast: () => void;
+  markBadgesSeen: (ids: string[]) => void;
+  markDialogueSeen: (id: string) => void;
+  setUiSkin: (skin: UiSkin) => void;
+  setSpriteStyle: (style: SpriteStyle) => void;
+  noteBackup: () => void;
+
   setSound: (on: boolean) => void;
   markPurified: (ids: string[]) => void;
   setProfile: (p: { name?: string; avatar?: string }) => void;
@@ -63,7 +152,7 @@ interface State {
 }
 
 /** Persisted-store version; exports carry it too so older files stay importable. */
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 
 const initial = {
   name: 'Hero',
@@ -79,6 +168,59 @@ const initial = {
   celebration: null,
   sound: true,
   purifiedSeen: {} as Record<string, true>,
+  // a 0 timestamp means "long ago", which regenerates to full
+  hp: HP_MAX,
+  hpAt: 0 as number | null,
+  mp: maxMp(1),
+  mpAt: 0,
+  battle: null as { key: string; startedAt: number } | null,
+  lastDraw: {} as Record<string, number[]>,
+  innOffer: null as InnOffer | null,
+  lastBackupAt: null as string | null,
+  chests: {} as Record<string, string>,
+  restTokens: 0,
+  restDays: {} as Record<string, true>,
+  badgesSeen: {} as Record<string, true>,
+  dialoguesSeen: {} as Record<string, true>,
+  uiSkin: 'classic' as UiSkin,
+  spriteStyle: 'auto' as SpriteStyle,
+  menuCursor: null as string | null,
+  hintsBought: {} as Record<string, true>,
+  toast: null as Toast | null,
+};
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
+
+/** HP right now, including regeneration since `hpAt`. Pure: does not write to the store. */
+export const hpNow = (s: Pick<State, 'hp' | 'hpAt'>, now = Date.now()) => regenNow(s.hp, s.hpAt, HP_MAX, now);
+export const mpMaxFor = (xp: number) => maxMp(levelInfo(xp).level);
+/** MP right now, including regeneration since `mpAt`. */
+export const mpNow = (s: Pick<State, 'mp' | 'mpAt' | 'xp'>, now = Date.now()) => regenNow(s.mp, s.mpAt, mpMaxFor(s.xp), now);
+
+/** One closed chest for every purified area that has none yet (retroactive). */
+const withChests = (chests: Record<string, string>, completed: Completed) => {
+  const out = { ...chests };
+  for (const i of ISLANDS) if (isIslandComplete(completed, i) && !(i.id in out)) out[i.id] = CHEST_CLOSED;
+  return out;
+};
+
+const earnedBadges = (s: {
+  completed: Completed;
+  quizAttempts: QuizAttempt[];
+  submissions: Submission[];
+  activity: Record<string, number>;
+}) =>
+  Object.fromEntries(
+    computeBadges(s)
+      .filter((b) => b.earned)
+      .map((b) => [b.id, true as const]),
+  );
+
+const trueMap = (v: unknown): Record<string, true> => {
+  const out: Record<string, true> = {};
+  if (isRecord(v)) for (const [k, x] of Object.entries(v)) if (x === true) out[k] = true;
+  return out;
 };
 
 /** Bump the streak/heatmap for today; only real study actions call this. */
@@ -105,9 +247,6 @@ function splitSession(startedAt: number, now: number): Record<string, number> {
   for (const day of Object.keys(out)) out[day] = Math.round(out[day]);
   return out;
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
 
 /** Pick only known save fields, with basic type checks. */
 function parseSave(data: Record<string, unknown>) {
@@ -150,15 +289,45 @@ function parseSave(data: Record<string, unknown>) {
           typeof a.at === 'string',
       )
     : [];
+
+  const xp = typeof data.xp === 'number' && Number.isFinite(data.xp) && data.xp >= 0 ? data.xp : 0;
+  const now = Date.now();
+  const num = (v: unknown, lo: number, hi: number, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+  // a missing, null or future timestamp becomes "now" (a v2 file has none of the battle fields)
+  const stamp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v <= now ? v : now);
+  const mpMax = mpMaxFor(xp);
+  const chests: Record<string, string> = {};
+  if (isRecord(data.chests)) {
+    for (const [k, v] of Object.entries(data.chests)) if (ISLAND_MAP[k] && typeof v === 'string') chests[k] = v;
+  }
+  const restDays: Record<string, true> = {};
+  for (const k of Object.keys(trueMap(data.restDays))) if (/^\d{4}-\d{2}-\d{2}$/.test(k)) restDays[k] = true;
+  let innOffer: InnOffer | null = null;
+  const o = data.innOffer;
+  if (isRecord(o) && typeof o.islandId === 'string' && typeof o.afterQuestId === 'string' && typeof o.rolledAt === 'string') {
+    const afterQuestId = o.afterQuestId;
+    if (ISLAND_MAP[o.islandId]?.quests.some((q) => q.id === afterQuestId)) {
+      innOffer = { islandId: o.islandId, afterQuestId, rolledAt: o.rolledAt };
+    }
+  }
   return {
     name: str(data.name, initial.name).slice(0, 30),
     avatar: str(data.avatar, initial.avatar),
-    xp: typeof data.xp === 'number' && Number.isFinite(data.xp) && data.xp >= 0 ? data.xp : 0,
+    xp,
     completed,
     quizAttempts,
     submissions,
     activity,
     notes,
+    hp: Math.round(num(data.hp, 0, HP_MAX, HP_MAX)),
+    hpAt: stamp(data.hpAt),
+    mp: Math.round(num(data.mp, 0, mpMax, mpMax)),
+    mpAt: stamp(data.mpAt),
+    innOffer,
+    chests: withChests(chests, completed),
+    restTokens: Math.round(num(data.restTokens, 0, REST_TOKENS_MAX, 0)),
+    restDays,
   };
 }
 
@@ -188,11 +357,19 @@ export const useStore = create<State>()(
       completeQuest: (islandId, questId, extra) => {
         const s = get();
         const key = questKey(islandId, questId);
-        if (s.completed[key]) return;
         const island = ISLAND_MAP[islandId];
         const quest = island.quests.find((q) => q.id === questId)!;
+        const isQuiz = quest.checkpoint.type === 'quiz';
+        const now = Date.now();
+        if (s.completed[key]) {
+          // a passed replay of a cleared quiz also rolls the Inn (project bosses never do)
+          if (isQuiz && extra?.score !== undefined && rollInn()) {
+            set({ innOffer: { islandId, afterQuestId: questId, rolledAt: new Date(now).toISOString() } });
+          }
+          return;
+        }
         const before = s.completed;
-        const after: Completed = { ...before, [key]: { at: new Date().toISOString(), ...extra } };
+        const after: Completed = { ...before, [key]: { at: new Date(now).toISOString(), ...extra } };
         let gained = questXp(quest);
         let islandCompleted: Island | undefined;
         let unlocked: Island[] = [];
@@ -203,10 +380,21 @@ export const useStore = create<State>()(
         }
         const oldLevel = levelInfo(s.xp).level;
         const newLevel = levelInfo(s.xp + gained).level;
+        // purifying an area is the only full heal; the Inn roll is skipped on that clear
+        const inn = isQuiz && !islandCompleted && rollInn();
         set({
           completed: after,
           xp: s.xp + gained,
           activity: bump(s.activity),
+          ...(islandCompleted
+            ? {
+                hp: HP_MAX,
+                // regeneration stays paused if a battle is somehow still open
+                hpAt: s.hpAt === null ? null : now,
+                chests: withChests(s.chests, after),
+              }
+            : {}),
+          ...(inn ? { innOffer: { islandId, afterQuestId: questId, rolledAt: new Date(now).toISOString() } } : {}),
           celebration: {
             islandId,
             questId,
@@ -215,9 +403,104 @@ export const useStore = create<State>()(
             islandCompleted,
             unlocked,
             levelUp: newLevel > oldLevel ? newLevel : undefined,
+            ...(islandCompleted ? { hpRestored: true } : {}),
+            ...(inn ? { inn: true } : {}),
           },
         });
       },
+
+      startBattle: (key, drawn) => {
+        const s = get();
+        const now = Date.now();
+        // "no minimum HP", but HP never sits at 0 outside a battle; revive defensively
+        const hp = hpNow(s, now).value || HP_REVIVE;
+        set({
+          hp,
+          hpAt: null,
+          battle: { key, startedAt: now },
+          innOffer: null, // the Inn expires when the next quiz battle starts
+          lastDraw: { ...s.lastDraw, [key]: drawn },
+          hintsBought: {}, // D13a: hints are paid for again on every attempt
+        });
+      },
+
+      takeHit: () => {
+        const s = get();
+        const damage = rollMissDamage();
+        const hp = Math.max(0, hpNow(s).value - damage);
+        // persisted straight away so a refresh can't undo or re-roll the damage
+        set({ hp, hpAt: s.hpAt === null ? null : Date.now() });
+        return { damage, hp, defeated: hp <= 0 };
+      },
+
+      endBattle: () => {
+        const s = get();
+        if (!s.battle && s.hpAt !== null && s.hp > 0) return; // nothing to close
+        // a knockout wakes up at 25 HP; regeneration continues from there
+        set({ hp: s.hp > 0 ? s.hp : HP_REVIVE, hpAt: Date.now(), battle: null });
+      },
+
+      spendMp: (cost) => {
+        const s = get();
+        const m = mpNow(s);
+        if (m.value < cost) return false;
+        set({ mp: m.value - cost, mpAt: m.at ?? Date.now() });
+        return true;
+      },
+
+      buyHint: (hintKey) => {
+        if (get().hintsBought[hintKey]) return 'owned';
+        if (!get().spendMp(HINT_COST)) return 'no-mp';
+        set((s) => ({ hintsBought: { ...s.hintsBought, [hintKey]: true } }));
+        return 'ok';
+      },
+
+      redeemInn: () => {
+        const s = get();
+        if (!s.innOffer) return false;
+        const now = Date.now();
+        const h = hpNow(s, now);
+        const m = mpNow(s, now);
+        set({
+          hp: Math.min(HP_MAX, h.value + INN_HP),
+          hpAt: s.hpAt === null ? null : now,
+          mp: Math.min(mpMaxFor(s.xp), m.value + INN_MP),
+          mpAt: now,
+          innOffer: null,
+        });
+        return true;
+      },
+
+      openChest: (islandId) => {
+        const s = get();
+        if (s.chests[islandId] !== CHEST_CLOSED) return false;
+        // the area's Tome is read from the island's content; the chest only records that it was opened
+        set({
+          chests: { ...s.chests, [islandId]: new Date().toISOString() },
+          restTokens: Math.min(REST_TOKENS_MAX, s.restTokens + 1),
+        });
+        return true;
+      },
+
+      applyCampfire: () => {
+        const s = get();
+        const days = campfireDays(s.activity, s.restDays, s.restTokens);
+        if (!days.length) return [];
+        set({
+          restTokens: s.restTokens - days.length,
+          restDays: { ...s.restDays, ...Object.fromEntries(days.map((d) => [d, true as const])) },
+        });
+        return days;
+      },
+
+      setMenuCursor: (menuCursor) => set({ menuCursor }),
+      showToast: (text) => set({ toast: { id: Date.now(), text } }),
+      dismissToast: () => set({ toast: null }),
+      markBadgesSeen: (ids) => set((s) => ({ badgesSeen: { ...s.badgesSeen, ...Object.fromEntries(ids.map((id) => [id, true as const])) } })),
+      markDialogueSeen: (id) => set((s) => ({ dialoguesSeen: { ...s.dialoguesSeen, [id]: true } })),
+      setUiSkin: (uiSkin) => set({ uiSkin }),
+      setSpriteStyle: (spriteStyle) => set({ spriteStyle }),
+      noteBackup: () => set({ lastBackupAt: new Date().toISOString() }),
 
       startTimer: (key) => {
         if (get().timer) get().stopTimer();
@@ -247,34 +530,92 @@ export const useStore = create<State>()(
           throw new Error('This file does not look like a Dev Odyssey save.');
         }
         const save = parseSave(data);
-        // githubToken and sound are not part of a save, so they stay as they are
+        // githubToken, sound, skins and dialogues are not part of a save, so they stay as they are
         set((s) => {
           // areas already cleared in the file must not replay their purification animation
           const purifiedSeen = { ...s.purifiedSeen };
           for (const i of ISLANDS) if (isIslandComplete(save.completed, i)) purifiedSeen[i.id] = true;
-          return { ...save, purifiedSeen, timer: null, celebration: null };
+          return {
+            ...save,
+            purifiedSeen,
+            // badges earned in the file are not news
+            badgesSeen: earnedBadges(save),
+            battle: null,
+            lastDraw: {},
+            hintsBought: {},
+            timer: null,
+            celebration: null,
+          };
         });
       },
-      reset: () => set((s) => ({ ...initial, sound: s.sound })),
+      reset: () => set((s) => ({ ...initial, sound: s.sound, uiSkin: s.uiSkin, spriteStyle: s.spriteStyle })),
     }),
     {
       name: 'dev-odyssey-save',
       version: STORE_VERSION,
-      // v2: adventure theme; the old sea-themed default name becomes "Hero"
       migrate: (persisted, version) => {
         const s = persisted as Partial<State>;
+        // v2: adventure theme; the old sea-themed default name becomes "Hero"
         if (version < 2 && s.name === 'Voyager') s.name = 'Hero';
+        // v3: classic JRPG layer (HP/MP, Inn, chests, Campfire, seen-flags)
+        if (version < 3) {
+          const completed = s.completed ?? {};
+          const now = Date.now();
+          s.badgesSeen = earnedBadges({
+            completed,
+            quizAttempts: s.quizAttempts ?? [],
+            submissions: s.submissions ?? [],
+            activity: s.activity ?? {},
+          });
+          // players with progress have already met the world: skip the intro
+          s.dialoguesSeen = Object.keys(completed).length ? { intro: true } : {};
+          s.hp = HP_MAX;
+          s.hpAt = now;
+          s.mp = mpMaxFor(s.xp ?? 0);
+          s.mpAt = now;
+          s.battle = null;
+          s.innOffer = null;
+          s.lastDraw = {};
+          s.lastBackupAt = null;
+          s.chests = withChests({}, completed);
+          s.restTokens = 0;
+          s.restDays = {};
+          s.uiSkin = 'classic';
+          s.spriteStyle = 'auto';
+        }
         return s as State;
       },
-      partialize: ({ celebration: _c, ...rest }) => rest,
+      // session-only fields stay out of localStorage
+      partialize: ({ celebration: _c, menuCursor: _m, hintsBought: _h, toast: _t, ...rest }) => rest,
     },
   ),
 );
 
 export function exportSave(): string {
-  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes } = useStore.getState();
+  const s = useStore.getState();
+  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes, hp, mp, mpAt, innOffer, chests, restTokens, restDays } = s;
   return JSON.stringify(
-    { app: 'dev-odyssey', version: STORE_VERSION, name, avatar, xp, completed, quizAttempts, submissions, activity, notes },
+    {
+      app: 'dev-odyssey',
+      version: STORE_VERSION,
+      name,
+      avatar,
+      xp,
+      completed,
+      quizAttempts,
+      submissions,
+      activity,
+      notes,
+      hp,
+      // null (paused in battle) is exported as "now"
+      hpAt: s.hpAt ?? Date.now(),
+      mp,
+      mpAt,
+      innOffer,
+      chests,
+      restTokens,
+      restDays,
+    },
     null,
     2,
   );

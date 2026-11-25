@@ -7,9 +7,9 @@ import type { Region } from '../types';
 const WEEKS = 26;
 
 export default function Dashboard() {
-  const { xp, completed, quizAttempts, submissions, activity } = useStore();
+  const { xp, completed, quizAttempts, submissions, activity, restDays } = useStore();
   const lv = levelInfo(xp);
-  const st = streak(activity);
+  const st = streak(activity, restDays);
   const totalMinutes = Object.values(activity).reduce((a, b) => a + b, 0);
   const islandsDone = ISLANDS.filter((i) => isIslandComplete(completed, i)).length;
   const questsDone = countCompleted(completed);
@@ -104,7 +104,7 @@ export default function Dashboard() {
 
         <section className="card span-2">
           <h2>📅 Activity (last {WEEKS} weeks)</h2>
-          <Heatmap activity={activity} />
+          <Heatmap activity={activity} restDays={restDays} />
         </section>
 
         <section className="card">
@@ -191,7 +191,7 @@ function Tile({ icon, label, value, sub }: { icon: string; label: string; value:
   );
 }
 
-function Heatmap({ activity }: { activity: Record<string, number> }) {
+function Heatmap({ activity, restDays }: { activity: Record<string, number>; restDays: Record<string, true> }) {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - (WEEKS * 7 - 1) - end.getDay());
@@ -205,7 +205,11 @@ function Heatmap({ activity }: { activity: Record<string, number> }) {
     <div className="heatmap-wrap">
       <div className="heatmap">
         {days.map((d) => (
-          <i key={d.day} className={`h${level(d.v)}`} title={`${d.day}: ${d.v === undefined ? 'no activity' : `${d.v} min studied`}`} />
+          <i
+            key={d.day}
+            className={d.v === undefined && restDays[d.day] ? 'h0 heat-rest' : `h${level(d.v)}`}
+            title={`${d.day}: ${d.v === undefined ? (restDays[d.day] ? 'zzz: rested by the campfire' : 'no activity') : `${d.v} min studied`}`}
+          />
         ))}
       </div>
       <div className="heat-legend muted small">

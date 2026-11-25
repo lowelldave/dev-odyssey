@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ISLAND_MAP } from '../data';
 import { monstersOf } from '../data/monsters';
-import { titleFor } from '../lib/game';
+import { computeBadges } from '../lib/badges';
+import { REST_TOKENS_MAX, levelInfo, maxMp, partyStats, titleFor } from '../lib/game';
+import { useFocusTrap } from '../lib/focus';
 import { sfx } from '../lib/sound';
-import { useStore } from '../store';
+import { tomeOf } from '../lib/tome';
+import { CHEST_CLOSED, useStore } from '../store';
+import { BadgeSlotIcon, Chest, HeartIcon, InnScene, MpCrystalIcon, Portrait, RestTokenIcon, TomeIcon } from './art';
+import StatBar from './ui/StatBar';
 
+/** The victory screen: battle log, party bars, healing, a wayside Inn offer, chest and new badges. */
 export default function Celebration() {
   const c = useStore((s) => s.celebration);
   const dismiss = useStore((s) => s.dismissCelebration);
@@ -26,63 +32,18 @@ export default function Celebration() {
     if (c.levelUp) sfx('levelup');
   }, [c]);
 
+  // badges earned by this clear that the player has not seen yet; marked seen once shown
+  const newBadges = useMemo(() => {
+    if (!c) return [];
+    const s = useStore.getState();
+    return computeBadges(s).filter((b) => b.earned && !s.badgesSeen[b.id]);
+  }, [c]);
+  useEffect(() => {
+    if (c && newBadges.length) useStore.getState().markBadgesSeen(newBadges.map((b) => b.id));
+  }, [c, newBadges]);
+
   const dialogRef = useRef<HTMLDivElement>(null);
-  const open = !!c;
-
-  // Escape closes, Tab stays inside the dialog, and focus returns to where it was on close.
-  // remember the last element focused outside the dialog, so focus can go back there on close
-  const lastOutside = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    const onFocusIn = (e: FocusEvent) => {
-      if (e.target instanceof HTMLElement && !dialogRef.current?.contains(e.target)) lastOutside.current = e.target;
-    };
-    document.addEventListener('focusin', onFocusIn);
-    return () => document.removeEventListener('focusin', onFocusIn);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    // React's autoFocus ignores links, so move focus to the primary choice ourselves
-    dialogRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        dismiss();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const nodes = dialogRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
-      if (!nodes?.length) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      const active = document.activeElement;
-      if (!dialogRef.current?.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      } else if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      // the trigger may be gone (the quiz swaps to its result view): fall back to the checkpoint section, then <main>
-      const previous = lastOutside.current;
-      if (previous?.isConnected) {
-        previous.focus();
-        return;
-      }
-      const fallback = document.getElementById('checkpoint') ?? document.querySelector<HTMLElement>('main');
-      if (fallback) {
-        if (!fallback.hasAttribute('tabindex')) fallback.setAttribute('tabindex', '-1');
-        fallback.focus({ preventScroll: true });
-      }
-    };
-  }, [open, dismiss]);
+  useFocusTrap(dialogRef, !!c, dismiss, 'checkpoint');
 
   if (!c) return null;
 
@@ -111,6 +72,7 @@ export default function Celebration() {
           {c.levelUp && (
             <p className="lvl">
               Level up! You reached LV {c.levelUp}: {titleFor(c.levelUp)}.
+              {c.levelUp % 10 === 0 && ` Max MP ${maxMp(c.levelUp)}!`}
             </p>
           )}
           {c.islandCompleted && (
@@ -120,6 +82,24 @@ export default function Celebration() {
           )}
           {c.unlocked.length > 0 && <p>New roads have opened!</p>}
         </div>
+
+        <PartyRow healed={!!c.hpRestored} />
+
+        {c.islandCompleted && <ChestReward islandId={c.islandCompleted.id} />}
+        {c.inn && <InnPrompt />}
+
+        {newBadges.length > 0 && (
+          <div className="victory-extras" aria-label="New achievements">
+            {newBadges.map((b) => (
+              <div key={b.id} className="row">
+                <BadgeSlotIcon earned size={24} />
+                <span>
+                  {b.emoji} <strong>{b.name}</strong> <span className="badge-new">Obtained!</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <p className="eyebrow">What next?</p>
         <div className="next-choices">
@@ -142,6 +122,125 @@ export default function Celebration() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The hero's HP and MP, live, so resting at the Inn updates them in place. */
+function PartyRow({ healed }: { healed: boolean }) {
+  const hp = useStore((s) => s.hp);
+  const hpAt = useStore((s) => s.hpAt);
+  const mp = useStore((s) => s.mp);
+  const mpAt = useStore((s) => s.mpAt);
+  const xp = useStore((s) => s.xp);
+  const p = partyStats({ hp, hpAt, mp, mpAt, xp }, Date.now());
+  const lv = levelInfo(xp);
+  return (
+    <div className="victory-extras party-row">
+      <div className="row">
+        <Portrait who="hero" size={40} />
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <StatBar kind="hp" title="HP" icon={<HeartIcon size={14} />} value={p.hp.value} max={p.hp.max} wounded={p.hp.state === 'wounded'} />
+          <StatBar kind="mp" title="MP" icon={<MpCrystalIcon size={14} />} value={p.mp.value} max={p.mp.max} />
+          <StatBar kind="exp" title={`EXP · LV ${lv.level}`} value={xp - lv.floor} max={lv.next - lv.floor} showValue={false} />
+        </div>
+      </div>
+      {healed && <p className="exp">Your wounds are healed: HP {p.hp.max}/{p.hp.max}</p>}
+    </div>
+  );
+}
+
+/** The chest an area drops when it is purified: a rest token for the Campfire and the area's Tome. */
+function ChestReward({ islandId }: { islandId: string }) {
+  const state = useStore((s) => s.chests[islandId]);
+  const tokens = useStore((s) => s.restTokens);
+  const openChest = useStore((s) => s.openChest);
+  const [showTome, setShowTome] = useState(false);
+  const island = ISLAND_MAP[islandId];
+  const opened = state !== undefined && state !== CHEST_CLOSED;
+  return (
+    <div className="victory-extras chest-reward">
+      <div className="row">
+        <Chest state={opened ? 'open' : 'closed'} scale="lg" title="Treasure chest" className={opened ? 'jr-chest-svg' : 'jr-chest-svg jr-chest-bob'} />
+        <div>
+          {opened ? (
+            <>
+              <p className="exp">
+                <RestTokenIcon size={18} /> +1 rest token ({tokens}/{REST_TOKENS_MAX}) <TomeIcon size={18} /> {island.name} Tome
+              </p>
+              <button className="btn btn-sm" onClick={() => setShowTome((v) => !v)} aria-expanded={showTome}>
+                {showTome ? 'Close the Tome' : 'Read the Tome'}
+              </button>
+            </>
+          ) : (
+            <>
+              <p>A chest appeared in the cleared area!</p>
+              <button
+                className="btn btn-primary btn-sm"
+                data-sfx="none"
+                onClick={() => {
+                  if (openChest(islandId)) sfx('chest');
+                }}
+              >
+                Open the chest
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {opened && showTome && (
+        <ul className="tome-text">
+          {tomeOf(island).map((t) => (
+            <li key={t.quest}>
+              <strong>{t.quest}</strong>: {t.points.join(' ')}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The wayside Inn offer rolled for this clear. "Later" leaves it on the quest board. */
+export function InnPrompt() {
+  const offer = useStore((s) => s.innOffer);
+  const redeem = useStore((s) => s.redeemInn);
+  const [rested, setRested] = useState(false);
+  const [later, setLater] = useState(false);
+  if (rested) return <p className="exp victory-extras">You rested at the inn. HP and MP restored.</p>;
+  if (!offer) return null;
+  return (
+    <div className="victory-extras inn-prompt">
+      <div className="row">
+        <InnScene title="A wayside inn" />
+        <div>
+          <p>
+            <strong>A wayside Inn appears down the road!</strong>
+          </p>
+          <p className="muted small">Rest: +50 HP, +30 MP. It stays open until your next battle.</p>
+        </div>
+      </div>
+      {later ? (
+        <p className="muted small">The Inn waits on the quest board.</p>
+      ) : (
+        <div className="btn-row">
+          <button
+            className="btn btn-primary btn-sm"
+            data-sfx="none"
+            onClick={() => {
+              if (redeem()) {
+                sfx('inn');
+                setRested(true);
+              }
+            }}
+          >
+            🛏️ Rest now
+          </button>
+          <button className="btn btn-sm" onClick={() => setLater(true)}>
+            Later
+          </button>
+        </div>
+      )}
     </div>
   );
 }

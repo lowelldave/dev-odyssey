@@ -2,11 +2,19 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { MAX_SESSION_MINUTES, levelInfo, streak, titleFor } from '../lib/game';
 import { useStore } from '../store';
+import { Cursor } from './art';
+import PartyPanel from './PartyPanel';
+
+const NAV = [
+  { to: '/', icon: '🗺️', label: 'World' },
+  { to: '/dashboard', icon: '📜', label: 'Adventure Log' },
+  { to: '/profile', icon: '🛡️', label: 'Status' },
+];
 
 export default function Hud() {
-  const { xp, avatar, name, activity, timer, stopTimer, sound, setSound } = useStore();
+  const { xp, avatar, name, activity, restDays, timer, stopTimer, sound, setSound } = useStore();
   const lv = levelInfo(xp);
-  const st = streak(activity);
+  const st = streak(activity, restDays);
 
   return (
     <header className="hud">
@@ -15,17 +23,19 @@ export default function Hud() {
         <span className="brand-name">Dev Odyssey</span>
       </Link>
       <nav className="hud-nav">
-        <NavLink to="/" end>
-          🗺️ <span>World</span>
-        </NavLink>
-        <NavLink to="/dashboard">
-          📜 <span>Adventure Log</span>
-        </NavLink>
-        <NavLink to="/profile">
-          🛡️ <span>Status</span>
-        </NavLink>
+        {NAV.map((n) => (
+          <NavLink key={n.to} to={n.to} end={n.to === '/'}>
+            <span className="nav-cursor" aria-hidden="true">
+              <Cursor size={12} />
+            </span>
+            {n.icon} <span>{n.label}</span>
+          </NavLink>
+        ))}
       </nav>
       <div className="hud-stats">
+        <div className="hud-party">
+          <PartyPanel variant="compact" />
+        </div>
         {timer && <TimerChip startedAt={timer.startedAt} onStop={stopTimer} />}
         <button
           className="chip chip-btn"
@@ -37,7 +47,7 @@ export default function Hud() {
         >
           {sound ? '🔊' : '🔇'}
         </button>
-        <span className="chip" title={`Current streak: ${st.current} days (best ${st.best})`}>
+        <span className="chip" title={`Current streak: ${st.current} days (best ${st.best}). Nights bridged by the Campfire count towards it.`}>
           🔥 {st.current}
         </span>
         <Link to="/profile" className="hud-player" title={`${name} — ${titleFor(lv.level)}`}>

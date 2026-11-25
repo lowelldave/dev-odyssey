@@ -2,11 +2,12 @@ import type { Checkpoint, ProjectCheckpoint, Quest, QuizCheckpoint, QuizQuestion
 
 /* ---------- content helpers (keep island files compact) ---------- */
 
-export const q = (question: string, options: string[], answer: number, explain?: string): QuizQuestion => ({
+export const q = (question: string, options: string[], answer: number, explain?: string, hint?: string): QuizQuestion => ({
   question,
   options,
   answer,
   explain,
+  hint,
 });
 
 export const quiz = (...questions: QuizQuestion[]): QuizCheckpoint => ({ type: 'quiz', questions, passPercent: 75 });

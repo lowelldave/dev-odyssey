@@ -1,7 +1,10 @@
-import type { CSSProperties } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { type Completed, isQuestDone, isQuestUnlocked, questXp } from '../lib/game';
+import { sfx } from '../lib/sound';
+import { useStore } from '../store';
 import type { Island, Quest } from '../types';
+import { InnNoteArt } from './art';
 
 const PIN_COLORS = ['#e8564a', '#3f8fe0', '#f2b632', '#4fb36a', '#b06ad9'];
 
@@ -18,6 +21,9 @@ function kindLabel(quest: Quest) {
 
 export default function QuestBoard({ island, completed }: { island: Island; completed: Completed }) {
   const firstOpen = island.quests.findIndex((q, i) => isQuestUnlocked(completed, island, i) && !isQuestDone(completed, island.id, q.id));
+  const innOffer = useStore((s) => s.innOffer);
+  const redeemInn = useStore((s) => s.redeemInn);
+  const showToast = useStore((s) => s.showToast);
   const regular = island.quests.filter((q) => !q.boss).length;
 
   return (
@@ -69,9 +75,8 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
               </>
             );
 
-            return unlocked ? (
+            const noteEl = unlocked ? (
               <Link
-                key={quest.id}
                 to={`/island/${island.id}/quest/${quest.id}`}
                 className={cls}
                 style={style}
@@ -81,9 +86,36 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
                 {body}
               </Link>
             ) : (
-              <div key={quest.id} className={cls} style={style} aria-disabled="true" aria-label={`${quest.title} (sealed)`}>
+              <div className={cls} style={style} aria-disabled="true" aria-label={`${quest.title} (sealed)`}>
                 {body}
               </div>
+            );
+            // a wayside Inn sits on the board right after the quest that rolled it
+            const innHere = innOffer && innOffer.islandId === island.id && innOffer.afterQuestId === quest.id;
+            return (
+              <Fragment key={quest.id}>
+                {noteEl}
+                {innHere && (
+                  <button
+                    type="button"
+                    className="jr-inn-note inn-note-wrap"
+                    data-sfx="none"
+                    aria-label="Wayside Inn. Rest to restore 50 HP and 30 MP. Open until your next battle."
+                    onClick={() => {
+                      if (redeemInn()) {
+                        sfx('inn');
+                        showToast('You rested at the wayside inn. HP and MP restored.');
+                      }
+                    }}
+                  >
+                    <InnNoteArt size={56} />
+                    <span>
+                      <strong>Wayside Inn</strong>
+                      <small>Rest: +50 HP, +30 MP · open until your next battle</small>
+                    </span>
+                  </button>
+                )}
+              </Fragment>
             );
           })}
         </div>

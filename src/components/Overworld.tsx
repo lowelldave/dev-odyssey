@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Island, Region } from '../types';
+import { DUNGEON_HEIGHT, DungeonBody, TOWN_HEIGHT, TownBody } from './art';
 
 /* ================================================================== */
 /* World space, isometric projection and layout                        */
@@ -404,13 +405,13 @@ function BushV2({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
 /* Landmarks                                                           */
 /* ================================================================== */
 
-export type Landmark = 'village' | 'castle' | 'tower' | 'cave' | 'shrine' | 'camp' | 'peak' | 'forge';
+export type Landmark = 'village' | 'castle' | 'tower' | 'cave' | 'shrine' | 'camp' | 'peak' | 'forge' | 'town' | 'dungeon';
 
 const KIND: Record<string, Landmark> = {
-  web: 'village', 'html-css': 'village', mern: 'village', mobile: 'village', php: 'village', vue: 'village',
-  typescript: 'castle', angular: 'castle', csharp: 'castle', cloud: 'castle', security: 'castle',
+  web: 'town', 'html-css': 'village', mern: 'town', mobile: 'village', php: 'village', vue: 'village',
+  typescript: 'castle', angular: 'castle', csharp: 'castle', cloud: 'castle', security: 'dungeon',
   architecture: 'tower', llm: 'tower', agents: 'tower', 'ai-production': 'tower', jamstack: 'tower',
-  databases: 'cave', go: 'cave', realtime: 'cave', ruby: 'cave', rag: 'cave',
+  databases: 'dungeon', go: 'cave', realtime: 'dungeon', ruby: 'cave', rag: 'cave',
   'ai-fundamentals': 'shrine', testing: 'shrine', svelte: 'shrine',
   frontend: 'camp', python: 'camp', java: 'camp', git: 'camp', backend: 'camp',
   javascript: 'peak', summit: 'peak', rust: 'peak', ml: 'peak',
@@ -428,6 +429,8 @@ export const LANDMARK_HEIGHT: Record<Landmark, number> = {
   camp: 80,
   peak: 150,
   forge: 120,
+  town: TOWN_HEIGHT,
+  dungeon: DUNGEON_HEIGHT,
 };
 
 export const GROUND: Record<Region, string> = { core: '#8fd06f', polyglot: '#6fbf62', stacks: '#e7cf8e', ai: '#b8acdc' };
@@ -710,6 +713,12 @@ export function LandmarkBody({ kind, c }: { kind: Landmark; c: string }) {
           </D>
         </>
       );
+      break;
+    case 'town':
+      body = <TownBody c={c} />;
+      break;
+    case 'dungeon':
+      body = <DungeonBody c={c} />;
       break;
   }
   return <g className="landmark">{body}</g>;
