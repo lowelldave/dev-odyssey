@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChestBody, SaveCrystalBody } from '../components/art';
+import { Bar, ChestBody, SaveCrystalBody } from '../components/art';
 import MapMenu from '../components/menu/MapMenu';
 import PartyPanel from '../components/PartyPanel';
 import { isBackupDue } from '../lib/save';
@@ -23,7 +23,7 @@ import {
 } from '../components/Overworld';
 import { sfx } from '../lib/sound';
 import { ISLANDS, ISLAND_MAP, REGIONS } from '../data';
-import { type IslandState, TOTAL_QUESTS, countCompleted, islandDoneCount, islandState, nextQuests } from '../lib/game';
+import { type Completed, type IslandState, TOTAL_QUESTS, countCompleted, islandDoneCount, islandState, nextQuests } from '../lib/game';
 import { useStore } from '../store';
 import type { Island, Region } from '../types';
 
@@ -83,6 +83,26 @@ const ROADS = ISLANDS.flatMap((island) =>
   island.requires.filter((id) => ISLAND_MAP[id]).map((id) => ({ from: ISLAND_MAP[id], to: island, ...roadPath(ISLAND_MAP[id], island) })),
 );
 
+/** The area the hero is working through: quests cleared out of its total, and what's next. */
+function AreaProgress({ island, completed, nextTitle }: { island: Island; completed: Completed; nextTitle: string }) {
+  const done = islandDoneCount(completed, island);
+  const total = island.quests.length;
+  return (
+    <Link className="area-progress" to={`/island/${island.id}`} aria-label={`Current area ${island.name}: ${done} of ${total} quests cleared. Open the quest board.`}>
+      <span className="area-progress-head">
+        <span className="area-progress-name">
+          {island.emoji} {island.name}
+        </span>
+        <span className="area-progress-count">
+          {done}/{total} quests
+        </span>
+      </span>
+      <Bar kind="exp" value={done} max={total} />
+      <span className="area-progress-next muted small">Next: {nextTitle}</span>
+    </Link>
+  );
+}
+
 export default function WorldMap() {
   const completed = useStore((s) => s.completed);
   const name = useStore((s) => s.name);
@@ -107,33 +127,34 @@ export default function WorldMap() {
 
   return (
     <div className="world">
+      {/* two columns: details, current-area progress and actions on the left; the hero's status on the right */}
       <section className="world-head window">
-        <div>
+        <div className="world-main">
           <p className="eyebrow">{doneQuests > 0 ? `Welcome back, ${name}` : `Welcome, ${name}`}</p>
           <h1>The Realm of Devoria</h1>
-          <p className="muted">
-            {ISLANDS.length} areas · {TOTAL_QUESTS} quests · {doneQuests} completed. Clear every quest in an area, including its boss battle, to
-            open the roads to new lands.
+          <p className="muted world-stats">
+            {ISLANDS.length} areas · {TOTAL_QUESTS} quests · {doneQuests} cleared
           </p>
+          {next && <AreaProgress island={next.island} completed={completed} nextTitle={next.quest.title} />}
+          <div className="world-actions">
+            {next && (
+              <Link className="btn btn-primary" to={`/island/${next.island.id}/quest/${next.quest.id}`}>
+                ▶ Continue: {next.quest.title}
+              </Link>
+            )}
+            <MapMenu />
+            <div className="seg">
+              <button className={view === 'map' ? 'on' : ''} onClick={() => setViewSaved('map')}>
+                🗺️ World
+              </button>
+              <button className={view === 'list' ? 'on' : ''} onClick={() => setViewSaved('list')}>
+                📋 List
+              </button>
+            </div>
+          </div>
         </div>
         <div className="world-party">
-          <PartyPanel />
-        </div>
-        <div className="world-actions">
-          {next && (
-            <Link className="btn btn-primary" to={`/island/${next.island.id}/quest/${next.quest.id}`}>
-              ▶ Continue: {next.quest.title}
-            </Link>
-          )}
-          <MapMenu />
-          <div className="seg">
-            <button className={view === 'map' ? 'on' : ''} onClick={() => setViewSaved('map')}>
-              🗺️ World
-            </button>
-            <button className={view === 'list' ? 'on' : ''} onClick={() => setViewSaved('list')}>
-              📋 List
-            </button>
-          </div>
+          <PartyPanel legend={false} />
         </div>
       </section>
 

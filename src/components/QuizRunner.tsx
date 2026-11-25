@@ -1,12 +1,12 @@
 import type { Island, Quest, QuizCheckpoint } from '../types';
-import BattleQuiz from './battle/BattleQuiz';
+import BattlePrep from './battle/BattlePrep';
 
-/** The quiz checkpoint. It keeps its old props and export; the battle lives in `battle/BattleQuiz`. */
+/** The quiz checkpoint on the quest page: the fight preview. The battle itself lives on its own page (`pages/BattlePage`). */
 export default function QuizRunner(props: {
   island: Island;
   quest: Quest;
   checkpoint: QuizCheckpoint;
   next: { href: string; label: string };
 }) {
-  return <BattleQuiz {...props} />;
+  return <BattlePrep island={props.island} quest={props.quest} checkpoint={props.checkpoint} />;
 }

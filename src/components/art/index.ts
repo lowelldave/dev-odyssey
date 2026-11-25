@@ -10,3 +10,4 @@ export * from './TownLandmark';
 export * from './DungeonLandmark';
 export * from './BattleFx';
 export * from './HintCard';
+export * from './HeroDefeated';

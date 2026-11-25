@@ -1,4 +1,5 @@
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import ProjectChecker from '../components/ProjectChecker';
 import QuizRunner from '../components/QuizRunner';
 import Paper from '../components/Paper';
@@ -9,6 +10,8 @@ import { useStore } from '../store';
 
 export default function QuestPage() {
   const { islandId = '', questId = '' } = useParams();
+  const location = useLocation();
+  const returning = !!(location.state as { focusCheckpoint?: boolean } | null)?.focusCheckpoint;
   const island = ISLAND_MAP[islandId];
   const index = island?.quests.findIndex((q) => q.id === questId) ?? -1;
   const completed = useStore((s) => s.completed);
@@ -17,6 +20,19 @@ export default function QuestPage() {
   const timer = useStore((s) => s.timer);
   const startTimer = useStore((s) => s.startTimer);
   const stopTimer = useStore((s) => s.stopTimer);
+
+  // coming back from a battle: land on the checkpoint, after App has reset the scroll position
+  useEffect(() => {
+    if (!returning) return;
+    const id = window.setTimeout(() => {
+      const el = document.getElementById('checkpoint');
+      if (!el) return;
+      el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
+      el.scrollIntoView({ block: 'start' });
+    }, 60);
+    return () => window.clearTimeout(id);
+  }, [returning, location.key]);
 
   if (!island || index < 0) return <Navigate to="/" replace />;
   const quest = island.quests[index];

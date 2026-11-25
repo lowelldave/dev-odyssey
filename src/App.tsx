@@ -4,6 +4,7 @@ import Celebration from './components/Celebration';
 import Hud from './components/Hud';
 import Onboarding from './components/Onboarding';
 import ToastHost from './components/ui/Toast';
+import BattlePage from './pages/BattlePage';
 import Dashboard from './pages/Dashboard';
 import IslandPage from './pages/IslandPage';
 import Profile from './pages/Profile';
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="/" element={<WorldMap />} />
           <Route path="/island/:islandId" element={<IslandPage />} />
           <Route path="/island/:islandId/quest/:questId" element={<QuestPage />} />
+          <Route path="/island/:islandId/quest/:questId/battle" element={<BattlePage />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<Navigate to="/" replace />} />

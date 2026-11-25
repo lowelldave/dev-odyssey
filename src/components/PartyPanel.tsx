@@ -20,7 +20,7 @@ const hpWord = { healthy: 'Healthy', wounded: 'Wounded', ko: 'Knocked out' } as 
  * The hero's bars. `full` shows HP, MP and EXP with their status text; `compact` is a two-bar strip for the HUD
  * on phones, which turns amber or red when the hero is hurt so the state is visible on every page.
  */
-export default function PartyPanel({ variant = 'full' }: { variant?: 'full' | 'compact' }) {
+export default function PartyPanel({ variant = 'full', legend = true }: { variant?: 'full' | 'compact'; legend?: boolean }) {
   const p = useParty(variant === 'full' ? 1000 : 15_000);
   const avatar = useStore((s) => s.avatar);
   const name = useStore((s) => s.name);
@@ -70,9 +70,11 @@ export default function PartyPanel({ variant = 'full' }: { variant?: 'full' | 'c
         status={p.mp.nextInSec === null ? 'Full' : `+1/min · next in ${formatDuration(p.mp.nextInSec)}`}
       />
       <StatBar kind="exp" title="EXP" value={p.exp.value} max={p.exp.max} status={`to LV ${p.exp.level + 1}`} />
-      <p className="party-legend muted small">
-        HP: −10 to −20 per wrong answer, +1/min outside battle, full when you purify an area. MP: hints. EXP: next level.
-      </p>
+      {legend && (
+        <p className="party-legend muted small">
+          HP: −10 to −20 per wrong answer, +1/min outside battle, full when you purify an area. MP: hints. EXP: next level.
+        </p>
+      )}
     </section>
   );
 }

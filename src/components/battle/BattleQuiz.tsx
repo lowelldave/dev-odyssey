@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { monstersOf } from '../../data/monsters';
 import {
   type BattleQuestion,
@@ -11,22 +11,23 @@ import {
   questKey,
   quizPasses,
   quizScore,
-  safeMisses,
 } from '../../lib/game';
 import { useReducedMotion } from '../../lib/motion';
 import { sfx } from '../../lib/sound';
 import { useNow } from '../../lib/useNow';
 import { mpNow, useStore } from '../../store';
 import type { Island, Quest, QuizCheckpoint } from '../../types';
-import { BattleBackdrop, DamageNumber, HintButtonFace, HintCard, HitFlash, KoMarks, SlashFx } from '../art';
+import { BattleBackdrop, DamageNumber, HeroDefeated, HintButtonFace, HintCard, HitFlash, SlashFx } from '../art';
 import { shade } from '../art/util';
 import { Monster } from '../AreaScene';
 import { InnPrompt } from '../Celebration';
 import { Hero } from '../Overworld';
 import CommandMenu, { type CommandItem } from '../ui/CommandMenu';
+import DefeatModal from './DefeatModal';
+import InlineText from '../ui/InlineText';
 import StatBar from '../ui/StatBar';
 
-type Phase = 'ready' | 'asking' | 'resolved' | 'defeated' | 'failed' | 'won';
+type Phase = 'loading' | 'asking' | 'resolved' | 'defeated' | 'failed' | 'won';
 
 interface Fx {
   id: number;
@@ -45,12 +46,16 @@ export default function BattleQuiz({
   quest,
   checkpoint,
   next,
+  lessonPath,
 }: {
   island: Island;
   quest: Quest;
   checkpoint: QuizCheckpoint;
   next: { href: string; label: string };
+  /** the quest (lesson) page: failing, fleeing and finishing all return here */
+  lessonPath: string;
 }) {
+  const navigate = useNavigate();
   const key = questKey(island.id, quest.id);
   const pool = checkpoint.questions;
   const n = Math.min(QUIZ_DRAW, pool.length);
@@ -76,7 +81,7 @@ export default function BattleQuiz({
   const party = partyStats({ hp, hpAt, mp, mpAt: mpAtV, xp }, now);
   const mpValue = mpNow({ mp, mpAt: mpAtV, xp }, now).value;
 
-  const [phase, setPhase] = useState<Phase>('ready');
+  const [phase, setPhase] = useState<Phase>('loading');
   const [drawn, setDrawn] = useState<BattleQuestion[]>([]);
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
@@ -88,6 +93,8 @@ export default function BattleQuiz({
   const [finishScore, setFinishScore] = useState(0);
   // a practice win (quest already cleared) has no victory screen, so its Inn offer is shown on the win panel
   const [practiceWin, setPracticeWin] = useState(false);
+  const [fleeAsk, setFleeAsk] = useState(false);
+  const keepRef = useRef<HTMLButtonElement>(null);
   const askedAt = useRef(0);
   const pendingComplete = useRef<number | null>(null);
   const pendingScore = useRef(0);
@@ -139,12 +146,47 @@ export default function BattleQuiz({
     askedAt.current = Date.now();
     setPhase('asking');
     setAnnounce(`Battle started. Question 1 of ${questions.length}.`);
-    sfx('confirm');
+    window.scrollTo(0, 0);
   }, [pool, n, key, startBattle]);
+
+  // the battle starts as soon as the page opens
+  useEffect(() => {
+    begin();
+  }, [begin]);
+
+  const backToLesson = useCallback(() => navigate(lessonPath, { state: { focusCheckpoint: true } }), [navigate, lessonPath]);
+  const flee = () => {
+    // nothing is recorded; HP already lost stays lost
+    useStore.getState().endBattle();
+    backToLesson();
+  };
+
+  // Escape opens the flee prompt (and closes it again), unless a dialog such as the victory screen is open
+  useEffect(() => {
+    if (phase !== 'asking' && phase !== 'resolved') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || useStore.getState().celebration) return;
+      e.preventDefault();
+      setFleeAsk((v) => !v);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [phase]);
+  // focus "Keep fighting" when the prompt opens; when it closes, put focus back on the active answer
+  const fleeWasOpen = useRef(false);
+  useEffect(() => {
+    if (fleeAsk) {
+      keepRef.current?.focus({ preventScroll: true });
+    } else if (fleeWasOpen.current) {
+      const answer = document.querySelector<HTMLElement>('.answers [tabindex="0"]') ?? document.querySelector<HTMLElement>('.answers button:not([disabled])');
+      answer?.focus({ preventScroll: true });
+    }
+    fleeWasOpen.current = fleeAsk;
+  }, [fleeAsk]);
 
   // after an answer, focus moves to the Next / Wake up button (once per phase change, not on every tick)
   useEffect(() => {
-    if (phase === 'resolved' || phase === 'defeated') focusRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    if (phase === 'resolved' || phase === 'failed') focusRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
   }, [phase]);
 
   const q = drawn[idx];
@@ -178,7 +220,7 @@ export default function BattleQuiz({
 
   const resolve = (choice: number) => {
     // a double Enter or a click right after "Next" must not answer the new question
-    if (phase !== 'asking' || picked !== null || !q || Date.now() - askedAt.current < 350) return;
+    if (phase !== 'asking' || picked !== null || !q || fleeAsk || Date.now() - askedAt.current < 350) return;
     setPicked(choice);
     const right = choice === q.answer;
     const total = idx + 1;
@@ -248,101 +290,86 @@ export default function BattleQuiz({
 
   const closeDefeat = () => {
     endBattle(); // wakes the hero at 25 HP; regeneration continues from there
-    setPhase('ready');
-    setDrawn([]);
+    backToLesson();
   };
 
   const heroKo = phase === 'defeated';
+  // open the defeat modal once the knockout has played on the stage (straight away under reduced motion)
+  const [defeatOpen, setDefeatOpen] = useState(false);
+  useEffect(() => {
+    if (phase !== 'defeated') {
+      setDefeatOpen(false);
+      return;
+    }
+    const id = window.setTimeout(() => setDefeatOpen(true), reduced ? 0 : 1100);
+    return () => window.clearTimeout(id);
+  }, [phase, reduced]);
   const backdrop = island.region;
   const monsterCol = shade(island.color, -0.2);
-  const afford = safeMisses(party.hp.value);
 
   const menuItems: CommandItem[] = useMemo(() => {
     if (!q) return [];
     return q.options.map((opt, i) => {
       const resolved = picked !== null;
       const cls = resolved ? (i === q.answer ? 'correct' : i === picked ? 'wrong' : '') : '';
-      return { id: String(i), label: opt, icon: <span className="opt-letter" aria-hidden="true">{letters[i]}</span>, disabled: resolved, className: cls };
+      return { id: String(i), label: <InlineText text={opt} />, icon: <span className="opt-letter" aria-hidden="true">{letters[i]}</span>, disabled: resolved, className: cls };
     });
   }, [q, picked]);
 
-  /* ---------- pre-battle ---------- */
-  if (phase === 'ready' || phase === 'failed') {
-    return (
-      <div className="battle">
-        <div className="battle-intro">
-          <svg viewBox="0 0 120 80" className="monster-preview" role="img" aria-label={`${mons.minion.name}`}>
-            <g transform="translate(60 70) scale(1.7)">
-              <Monster family={mons.minion.family} c={monsterCol} name={mons.minion.name} x={0} y={0} />
-            </g>
-          </svg>
-          <div>
-            <p className="eyebrow">{mons.minion.name} blocks the way</p>
-            <p>
-              {n} question{n === 1 ? '' : 's'} drawn from a pool of {pool.length} · {need} correct to win.
-              {n < QUIZ_DRAW && ' This trial is still growing, so it asks fewer questions.'}
-              {alreadyDone && ' You already won this one, so retakes are just for practice.'}
-            </p>
-          </div>
-        </div>
-        {phase === 'failed' && (
-          <div className="result fail" role="status">
-            <strong>
-              The {mons.minion.name} still stands. {correct}/{n} correct ({finishScore}%)
-            </strong>
-            <p>You needed {need}. Review the tutorial above, then try again with fresh questions.</p>
-          </div>
-        )}
-        <div className="battle-vitals">
-          <StatBar kind="hp" title="HP" value={party.hp.value} max={hpMax} wounded={party.hp.state === 'wounded'} ko={party.hp.state === 'ko'} status={party.hp.paused ? 'Regeneration paused' : undefined} />
-          <StatBar kind="mp" title="MP" value={party.mp.value} max={party.mp.max} status={`Hints cost ${HINT_COST} MP`} />
-        </div>
-        <p className={`afford ${afford <= 1 ? 'is-warn' : ''}`} role={afford <= 1 ? 'alert' : undefined}>
-          You can afford {afford} wrong answer{afford === 1 ? '' : 's'}.
-          {afford <= 1 && (afford === 0 ? ' Even one miss could knock you out.' : ' One more miss after that could knock you out.')}
-        </p>
-        {innOffer && (
-          <p className="muted small">
-            A wayside Inn is open on the <Link to={`/island/${innOffer.islandId}`}>quest board</Link>. Starting a battle closes it.
-          </p>
-        )}
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={begin} disabled={!pool.length} data-sfx="none">
-            ⚔️ {phase === 'failed' ? 'Retake (new questions)' : 'Begin battle'}
-          </button>
-        </div>
-        <p className="sr-only" role="status" aria-live="polite">
-          {announce}
-        </p>
-      </div>
-    );
-  }
-
   /* ---------- battle ---------- */
+  if (phase === 'loading') return <p className="sr-only" role="status">Preparing the battle…</p>;
   const total = drawn.length;
   const last = idx + 1 >= total;
+  const fighting = phase === 'asking' || phase === 'resolved';
   return (
     <div className="battle">
       <p className="sr-only" role="status" aria-live="polite">
         {announce}
       </p>
+      {fighting && (
+        <div className="flee-row">
+          {fleeAsk ? (
+            <div className="flee-confirm" role="group" aria-label="Flee the battle?">
+              <p>
+                <strong>Flee the battle?</strong> HP you lost stays lost and this attempt isn&apos;t recorded.
+              </p>
+              <div className="btn-row">
+                <button className="btn btn-primary btn-sm" onClick={() => setFleeAsk(false)} ref={keepRef} data-sfx="back">
+                  Keep fighting
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={flee} data-sfx="back">
+                  Flee
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={() => setFleeAsk(true)} aria-keyshortcuts="Escape" data-sfx="back">
+              🏃 Flee <kbd className="kbd">Esc</kbd>
+            </button>
+          )}
+        </div>
+      )}
       <div className={`jr-battle-stage battle-stage ${fx?.kind === 'hurt' && !reduced ? 'jr-shake' : ''}`} aria-hidden="true">
         <BattleBackdrop kind={backdrop} />
         <svg className="battle-svg" viewBox="0 0 300 150" preserveAspectRatio="xMidYMax meet">
+          {/* attack animations live on inner groups (keyed by the effect so each one replays): a CSS transform on the
+              outer group would replace its SVG translate. Right answer: the hero lunges and the monster recoils.
+              Wrong answer: the monster lunges and the hero recoils. */}
           <g transform="translate(236 138) scale(3)" className={monsterShown <= 0 ? 'monster-fallen' : ''}>
-            <Monster family={mons.minion.family} c={monsterCol} name={mons.minion.name} x={0} y={0} />
-          </g>
-          {/* lying down, the hero is raised a little so the stage edge doesn't crop him */}
-          <g transform={`translate(${heroKo ? 32 : 62} ${heroKo ? 120 : 130}) scale(2.1)`}>
-            {/* the CSS rotate lives on an inner group: on the outer one it would replace the SVG translate */}
-            <g className={heroKo ? 'jr-ko-tint' : ''}>
-              <Hero x={0} y={0} />
+            <g key={`m-${fx?.id ?? 0}`} className={fx?.kind === 'hurt' ? 'anim-monster-attack' : fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-monster-recoil' : ''}>
+              <Monster family={mons.minion.family} c={monsterCol} name={mons.minion.name} x={0} y={0} />
             </g>
           </g>
-          {/* the stars bob with a CSS transform, so they get their own positioned wrapper */}
-          {heroKo && (
-            <g transform="translate(130 92)">
-              <KoMarks />
+          {/* knocked out, the hero switches to the dedicated defeated sprite (it carries its own dizzy stars) */}
+          {heroKo ? (
+            <g transform="translate(70 136) scale(2.1)">
+              <HeroDefeated />
+            </g>
+          ) : (
+            <g transform="translate(62 130) scale(2.1)">
+              <g key={`h-${fx?.id ?? 0}`} className={fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-hero-attack' : fx?.kind === 'hurt' ? 'anim-hero-recoil' : ''}>
+                <Hero x={0} y={0} />
+              </g>
             </g>
           )}
         </svg>
@@ -389,7 +416,7 @@ export default function BattleQuiz({
           <p className="eyebrow">
             Question {idx + 1} of {total} · {need} correct to win
           </p>
-          <h3 className="battle-question">{q.question}</h3>
+          <h3 className="battle-question"><InlineText text={q.question} /></h3>
           <CommandMenu
             key={`${idx}-${q.poolIndex}`}
             items={menuItems}
@@ -419,7 +446,7 @@ export default function BattleQuiz({
               </span>
             )}
           </div>
-          {hintBought && q.hint && <HintCard>{q.hint}</HintCard>}
+          {hintBought && q.hint && <HintCard><InlineText text={q.hint} /></HintCard>}
 
           {phase === 'resolved' && picked !== null && (
             <div ref={focusRef} className={`resolve ${picked === q.answer ? 'is-right' : 'is-wrong'}`}>
@@ -435,7 +462,7 @@ export default function BattleQuiz({
                   The answer was: {q.options[q.answer]}
                 </p>
               )}
-              {q.explain && <p className="explain">💡 {q.explain}</p>}
+              {q.explain && <p className="explain">💡 <InlineText text={q.explain} /></p>}
               <button className="btn btn-primary" onClick={nextQuestion} data-sfx="confirm">
                 {last ? 'Finish battle ▶' : 'Next question ▶'}
               </button>
@@ -444,23 +471,27 @@ export default function BattleQuiz({
         </section>
       )}
 
-      {phase === 'defeated' && (
-        <div ref={focusRef} className="result fail" role="status">
+      {/* the knockout plays on the stage first, then the defeat modal opens */}
+      {phase === 'defeated' && !defeatOpen && (
+        <p className="result fail" role="status">
           <strong>You were knocked out…</strong>
-          <p>
-            {correct}/{total} answered correctly before the {mons.minion.name} won. No EXP this time. You will wake with 25 HP.
-          </p>
+        </p>
+      )}
+      {phase === 'defeated' && defeatOpen && (
+        <DefeatModal monsterName={mons.minion.name} correct={correct} answered={idx + 1} total={drawn.length} innIslandId={innOffer?.islandId} onWake={closeDefeat} />
+      )}
+
+      {phase === 'failed' && (
+        <div ref={focusRef} className="result fail" role="status">
+          <strong>
+            The {mons.minion.name} still stands. {correct}/{total} correct ({finishScore}%), you needed {need}
+          </strong>
+          <p>Review the lesson, then begin again with a fresh set of questions.</p>
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={closeDefeat} data-sfx="back">
-              Wake up
+            <button className="btn btn-primary" onClick={backToLesson} data-sfx="back">
+              Return to the lesson
             </button>
-            {innOffer && (
-              <Link className="btn" to={`/island/${innOffer.islandId}`} data-sfx="confirm">
-                🛏️ Visit the wayside Inn
-              </Link>
-            )}
           </div>
-          <p className="muted small">Review the tutorial above, rest, then take the trial again with new questions.</p>
         </div>
       )}
 
@@ -473,14 +504,8 @@ export default function BattleQuiz({
             <Link className="btn btn-primary" to={next.href} data-sfx="confirm">
               ▶ {next.label}
             </Link>
-            <button
-              className="btn"
-              onClick={() => {
-                setPhase('ready');
-                setDrawn([]);
-              }}
-            >
-              Practice again
+            <button className="btn" onClick={backToLesson} data-sfx="back">
+              Back to the lesson
             </button>
           </div>
           {practiceWin && innOffer && <InnPrompt />}
