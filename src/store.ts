@@ -4,6 +4,10 @@ import { ISLANDS, ISLAND_MAP } from './data';
 import { computeBadges } from './lib/badges';
 import {
   type Completed,
+  type Inventory,
+  type ItemId,
+  EMPTY_INVENTORY,
+  GOLD_CAP,
   HINT_COST,
   HP_MAX,
   HP_REVIVE,
@@ -11,17 +15,23 @@ import {
   INN_MP,
   MAX_SESSION_MINUTES,
   REST_TOKENS_MAX,
+  ITEMS,
+  POTION_HP,
   XP,
   campfireDays,
+  canBuy,
   isIslandComplete,
   levelInfo,
   maxMp,
   newlyUnlockedBy,
+  parseInventory,
   questKey,
   questXp,
   regenNow,
+  retroGold,
   rollInn,
   rollMissDamage,
+  rollQuestGold,
   today,
   toDay,
 } from './lib/game';
@@ -47,6 +57,8 @@ export interface Celebration {
   questId: string;
   questTitle: string;
   xp: number;
+  /** gold found for this first clear */
+  gold: number;
   islandCompleted?: Island;
   unlocked: Island[];
   levelUp?: number;
@@ -97,7 +109,10 @@ interface State {
   mp: number;
   mpAt: number;
   /** the battle in progress, kept so a refresh mid-battle can be detected */
-  battle: { key: string; startedAt: number } | null;
+  battle: { key: string; startedAt: number; shield: boolean } | null;
+  /** coins and carried items */
+  gold: number;
+  items: Inventory;
   /** questKey -> pool indices of the last attempt, so a retake prefers other questions */
   lastDraw: Record<string, number[]>;
   innOffer: InnOffer | null;
@@ -119,7 +134,10 @@ interface State {
   toast: Toast | null;
 
   startBattle: (key: string, drawn: number[]) => void;
-  takeHit: () => { damage: number; hp: number; defeated: boolean };
+  takeHit: () => { damage: number; hp: number; defeated: boolean; deflected: boolean };
+  drinkPotion: () => { result: 'ok' | 'none' | 'full' | 'no-battle'; healed: number; hp: number };
+  restInTent: () => 'ok' | 'none' | 'in-battle' | 'full';
+  buyItem: (id: ItemId) => 'ok' | 'poor' | 'max';
   endBattle: () => void;
   spendMp: (cost: number) => boolean;
   buyHint: (hintKey: string) => 'ok' | 'owned' | 'no-mp';
@@ -142,7 +160,8 @@ interface State {
   setNote: (key: string, text: string) => void;
   recordQuiz: (a: Omit<QuizAttempt, 'at'>) => void;
   recordSubmission: (s: Omit<Submission, 'at'>) => void;
-  completeQuest: (islandId: string, questId: string, extra?: { score?: number; repo?: string }) => void;
+  /** returns the gold awarded (0 for a replay) */
+  completeQuest: (islandId: string, questId: string, extra?: { score?: number; repo?: string }) => number;
   startTimer: (key: string) => void;
   stopTimer: () => void;
   addMinutes: (minutes: number) => void;
@@ -152,7 +171,7 @@ interface State {
 }
 
 /** Persisted-store version; exports carry it too so older files stay importable. */
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 
 const initial = {
   name: 'Hero',
@@ -173,7 +192,9 @@ const initial = {
   hpAt: 0 as number | null,
   mp: maxMp(1),
   mpAt: 0,
-  battle: null as { key: string; startedAt: number } | null,
+  battle: null as { key: string; startedAt: number; shield: boolean } | null,
+  gold: 0,
+  items: { ...EMPTY_INVENTORY } as Inventory,
   lastDraw: {} as Record<string, number[]>,
   innOffer: null as InnOffer | null,
   lastBackupAt: null as string | null,
@@ -247,6 +268,26 @@ function splitSession(startedAt: number, now: number): Record<string, number> {
   for (const day of Object.keys(out)) out[day] = Math.round(out[day]);
   return out;
 }
+
+/** Gold granted by the v4 migration, shown once by App as a toast. */
+let pendingRetroGrant = 0;
+export const consumeRetroGrant = () => {
+  const g = pendingRetroGrant;
+  pendingRetroGrant = 0;
+  return g;
+};
+
+/** The Inn's rest, shared with tents: +INN_HP/+INN_MP capped at max; regeneration stays paused in a battle. */
+const innRestore = (s: State, now: number) => {
+  const h = hpNow(s, now);
+  const m = mpNow(s, now);
+  return {
+    hp: Math.min(HP_MAX, h.value + INN_HP),
+    hpAt: s.hpAt === null ? null : now,
+    mp: Math.min(mpMaxFor(s.xp), m.value + INN_MP),
+    mpAt: now,
+  };
+};
 
 /** Pick only known save fields, with basic type checks. */
 function parseSave(data: Record<string, unknown>) {
@@ -325,6 +366,12 @@ function parseSave(data: Record<string, unknown>) {
     mp: Math.round(num(data.mp, 0, mpMax, mpMax)),
     mpAt: stamp(data.mpAt),
     innOffer,
+    // a file from before gold existed gets the same retroactive grant as an upgraded save
+    gold:
+      typeof data.gold === 'number' && Number.isFinite(data.gold) && data.gold >= 0
+        ? Math.min(GOLD_CAP, Math.round(data.gold))
+        : retroGold(completed),
+    items: parseInventory(data.items),
     chests: withChests(chests, completed),
     restTokens: Math.round(num(data.restTokens, 0, REST_TOKENS_MAX, 0)),
     restDays,
@@ -366,7 +413,7 @@ export const useStore = create<State>()(
           if (isQuiz && extra?.score !== undefined && rollInn()) {
             set({ innOffer: { islandId, afterQuestId: questId, rolledAt: new Date(now).toISOString() } });
           }
-          return;
+          return 0;
         }
         const before = s.completed;
         const after: Completed = { ...before, [key]: { at: new Date(now).toISOString(), ...extra } };
@@ -382,9 +429,11 @@ export const useStore = create<State>()(
         const newLevel = levelInfo(s.xp + gained).level;
         // purifying an area is the only full heal; the Inn roll is skipped on that clear
         const inn = isQuiz && !islandCompleted && rollInn();
+        const gold = rollQuestGold(quest);
         set({
           completed: after,
           xp: s.xp + gained,
+          gold: Math.min(GOLD_CAP, s.gold + gold),
           activity: bump(s.activity),
           ...(islandCompleted
             ? {
@@ -400,6 +449,7 @@ export const useStore = create<State>()(
             questId,
             questTitle: quest.title,
             xp: gained,
+            gold,
             islandCompleted,
             unlocked,
             levelUp: newLevel > oldLevel ? newLevel : undefined,
@@ -407,6 +457,7 @@ export const useStore = create<State>()(
             ...(inn ? { inn: true } : {}),
           },
         });
+        return gold;
       },
 
       startBattle: (key, drawn) => {
@@ -417,7 +468,7 @@ export const useStore = create<State>()(
         set({
           hp,
           hpAt: null,
-          battle: { key, startedAt: now },
+          battle: { key, startedAt: now, shield: s.items.shield > 0 },
           innOffer: null, // the Inn expires when the next quiz battle starts
           lastDraw: { ...s.lastDraw, [key]: drawn },
           hintsBought: {}, // D13a: hints are paid for again on every attempt
@@ -426,11 +477,46 @@ export const useStore = create<State>()(
 
       takeHit: () => {
         const s = get();
+        if (s.battle?.shield && s.items.shield > 0) {
+          // the shield is spent only when it actually deflects; no damage is rolled
+          set({ items: { ...s.items, shield: s.items.shield - 1 }, battle: { ...s.battle, shield: false } });
+          return { damage: 0, hp: hpNow(s).value, defeated: false, deflected: true };
+        }
         const damage = rollMissDamage();
         const hp = Math.max(0, hpNow(s).value - damage);
         // persisted straight away so a refresh can't undo or re-roll the damage
         set({ hp, hpAt: s.hpAt === null ? null : Date.now() });
-        return { damage, hp, defeated: hp <= 0 };
+        return { damage, hp, defeated: hp <= 0, deflected: false };
+      },
+
+      drinkPotion: () => {
+        const s = get();
+        const hp = hpNow(s).value;
+        if (!s.battle) return { result: 'no-battle' as const, healed: 0, hp };
+        if (s.items.potion <= 0) return { result: 'none' as const, healed: 0, hp };
+        if (hp >= HP_MAX) return { result: 'full' as const, healed: 0, hp };
+        const next = Math.min(HP_MAX, hp + POTION_HP);
+        // hpAt stays null while the battle pauses regeneration
+        set({ hp: next, hpAt: s.hpAt === null ? null : Date.now(), items: { ...s.items, potion: s.items.potion - 1 } });
+        return { result: 'ok' as const, healed: next - hp, hp: next };
+      },
+
+      restInTent: () => {
+        const s = get();
+        if (s.battle || s.hpAt === null) return 'in-battle';
+        if (s.items.tent <= 0) return 'none';
+        const now = Date.now();
+        if (hpNow(s, now).value >= HP_MAX && mpNow(s, now).value >= mpMaxFor(s.xp)) return 'full';
+        set({ ...innRestore(s, now), items: { ...s.items, tent: s.items.tent - 1 } });
+        return 'ok';
+      },
+
+      buyItem: (id) => {
+        const s = get();
+        const r = canBuy(s.gold, s.items, id);
+        if (r !== 'ok') return r;
+        set({ gold: s.gold - ITEMS[id].price, items: { ...s.items, [id]: s.items[id] + 1 } });
+        return 'ok';
       },
 
       endBattle: () => {
@@ -458,16 +544,7 @@ export const useStore = create<State>()(
       redeemInn: () => {
         const s = get();
         if (!s.innOffer) return false;
-        const now = Date.now();
-        const h = hpNow(s, now);
-        const m = mpNow(s, now);
-        set({
-          hp: Math.min(HP_MAX, h.value + INN_HP),
-          hpAt: s.hpAt === null ? null : now,
-          mp: Math.min(mpMaxFor(s.xp), m.value + INN_MP),
-          mpAt: now,
-          innOffer: null,
-        });
+        set({ ...innRestore(s, Date.now()), innOffer: null });
         return true;
       },
 
@@ -583,6 +660,14 @@ export const useStore = create<State>()(
           s.uiSkin = 'classic';
           s.spriteStyle = 'auto';
         }
+        // v4: gold and items; progress made before gold existed is paid out once
+        if (version < 4) {
+          const grant = retroGold(s.completed ?? {});
+          s.gold = grant;
+          s.items = { ...EMPTY_INVENTORY };
+          s.battle = null; // a v3 battle has no shield flag
+          pendingRetroGrant = grant;
+        }
         return s as State;
       },
       // session-only fields stay out of localStorage
@@ -593,7 +678,7 @@ export const useStore = create<State>()(
 
 export function exportSave(): string {
   const s = useStore.getState();
-  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes, hp, mp, mpAt, innOffer, chests, restTokens, restDays } = s;
+  const { name, avatar, xp, completed, quizAttempts, submissions, activity, notes, hp, mp, mpAt, innOffer, chests, restTokens, restDays, gold, items } = s;
   return JSON.stringify(
     {
       app: 'dev-odyssey',
@@ -615,6 +700,8 @@ export function exportSave(): string {
       chests,
       restTokens,
       restDays,
+      gold,
+      items,
     },
     null,
     2,

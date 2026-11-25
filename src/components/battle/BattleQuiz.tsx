@@ -17,7 +17,21 @@ import { sfx } from '../../lib/sound';
 import { useNow } from '../../lib/useNow';
 import { mpNow, useStore } from '../../store';
 import type { Island, Quest, QuizCheckpoint } from '../../types';
-import { BattleBackdrop, DamageNumber, HeroDefeated, HintButtonFace, HintCard, HitFlash, SlashFx } from '../art';
+import {
+  BattleBackdrop,
+  DamageNumber,
+  GoldCoinIcon,
+  HealSparkle,
+  HeroDefeated,
+  HintButtonFace,
+  HintCard,
+  HitFlash,
+  PotionIcon,
+  ShieldAura,
+  ShieldDeflectFx,
+  ShieldIcon,
+  SlashFx,
+} from '../art';
 import { shade } from '../art/util';
 import { Monster } from '../AreaScene';
 import { InnPrompt } from '../Celebration';
@@ -31,7 +45,7 @@ type Phase = 'loading' | 'asking' | 'resolved' | 'defeated' | 'failed' | 'won';
 
 interface Fx {
   id: number;
-  kind: 'hit' | 'hurt' | 'finish';
+  kind: 'hit' | 'hurt' | 'finish' | 'deflect' | 'heal';
   amount?: number;
 }
 
@@ -67,6 +81,9 @@ export default function BattleQuiz({
   const takeHit = useStore((s) => s.takeHit);
   const endBattle = useStore((s) => s.endBattle);
   const buyHint = useStore((s) => s.buyHint);
+  const drinkPotion = useStore((s) => s.drinkPotion);
+  const potions = useStore((s) => s.items.potion);
+  const shieldUp = useStore((s) => !!s.battle?.shield);
   const recordQuiz = useStore((s) => s.recordQuiz);
   const completeQuest = useStore((s) => s.completeQuest);
   const alreadyDone = useStore((s) => !!s.completed[key]);
@@ -94,6 +111,12 @@ export default function BattleQuiz({
   // a practice win (quest already cleared) has no victory screen, so its Inn offer is shown on the win panel
   const [practiceWin, setPracticeWin] = useState(false);
   const [fleeAsk, setFleeAsk] = useState(false);
+  // one potion per question: the index of the question a potion was drunk on
+  const [potionUsedAt, setPotionUsedAt] = useState<number | null>(null);
+  // the auto-shield has deflected a hit in this battle
+  const [deflected, setDeflected] = useState(false);
+  // gold from a first clear; null until the clear has been recorded
+  const [goldWon, setGoldWon] = useState<number | null>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const askedAt = useRef(0);
   const pendingComplete = useRef<number | null>(null);
@@ -143,9 +166,13 @@ export default function BattleQuiz({
     setCorrect(0);
     setLastMiss(0);
     setFx(null);
+    setPotionUsedAt(null);
+    setDeflected(false);
+    setGoldWon(null);
     askedAt.current = Date.now();
     setPhase('asking');
-    setAnnounce(`Battle started. Question 1 of ${questions.length}.`);
+    const shielded = !!useStore.getState().battle?.shield;
+    setAnnounce(`Battle started. ${shielded ? 'Auto-shield equipped. ' : ''}Question 1 of ${questions.length}.`);
     window.scrollTo(0, 0);
   }, [pool, n, key, startBattle]);
 
@@ -218,6 +245,43 @@ export default function BattleQuiz({
     return () => document.removeEventListener('keydown', onKey);
   }, [phase, useHint]);
 
+  const potionState: 'ready' | 'none' | 'used' | 'full' = potions === 0 ? 'none' : potionUsedAt === idx ? 'used' : party.hp.value >= hpMax ? 'full' : 'ready';
+  const potionReason =
+    potionState === 'none' ? 'No potions. Buy them at the shop' : potionState === 'used' ? 'One potion per question' : potionState === 'full' ? 'HP is already full' : undefined;
+
+  // drinking never answers or scores a question and never moves focus
+  const drink = useCallback(() => {
+    if ((phase !== 'asking' && phase !== 'resolved') || fleeAsk) return;
+    if (potionUsedAt === idx) {
+      sfx('error');
+      return;
+    }
+    const res = drinkPotion();
+    if (res.result !== 'ok') {
+      sfx('error');
+      return;
+    }
+    sfx('potion');
+    setPotionUsedAt(idx);
+    setFx({ id: Date.now(), kind: 'heal', amount: res.healed });
+    setAnnounce(`You drank a potion: +${res.healed} HP. HP ${Math.round(res.hp)} of ${hpMax}. Potions left: ${useStore.getState().items.potion}.`);
+  }, [phase, fleeAsk, potionUsedAt, idx, drinkPotion, hpMax]);
+
+  // P drinks a potion while a question is open or just answered
+  useEffect(() => {
+    if (phase !== 'asking' && phase !== 'resolved') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'p' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (useStore.getState().celebration) return;
+      e.preventDefault();
+      drink();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [phase, drink]);
+
   const resolve = (choice: number) => {
     // a double Enter or a click right after "Next" must not answer the new question
     if (phase !== 'asking' || picked !== null || !q || fleeAsk || Date.now() - askedAt.current < 350) return;
@@ -233,6 +297,16 @@ export default function BattleQuiz({
       return;
     }
     const res = takeHit();
+    if (res.deflected) {
+      // the auto-shield absorbs the hit: no damage and no HP flash, but the answer still counts as wrong
+      sfx('deflect');
+      setLastMiss(0);
+      setDeflected(true);
+      setFx({ id: Date.now(), kind: 'deflect' });
+      setAnnounce(`Question ${total} of ${n}. Wrong. Your auto-shield deflected the attack: no damage. HP ${Math.round(res.hp)} of ${hpMax}.`);
+      setPhase('resolved');
+      return;
+    }
     sfx('hurt');
     setLastMiss(res.damage);
     setHitsKey((k) => k + 1);
@@ -282,7 +356,7 @@ export default function BattleQuiz({
     pendingScore.current = score;
     const finish = () => {
       pendingComplete.current = null;
-      completeQuest(island.id, quest.id, { score });
+      setGoldWon(completeQuest(island.id, quest.id, { score }));
     };
     if (monsterHp > 0 && !reduced) pendingComplete.current = window.setTimeout(finish, 900);
     else finish();
@@ -356,10 +430,11 @@ export default function BattleQuiz({
               outer group would replace its SVG translate. Right answer: the hero lunges and the monster recoils.
               Wrong answer: the monster lunges and the hero recoils. */}
           <g transform="translate(236 138) scale(3)" className={monsterShown <= 0 ? 'monster-fallen' : ''}>
-            <g key={`m-${fx?.id ?? 0}`} className={fx?.kind === 'hurt' ? 'anim-monster-attack' : fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-monster-recoil' : ''}>
+            <g key={`m-${fx?.id ?? 0}`} className={fx?.kind === 'hurt' || fx?.kind === 'deflect' ? 'anim-monster-attack' : fx?.kind === 'hit' || fx?.kind === 'finish' ? 'anim-monster-recoil' : ''}>
               <Monster family={mons.minion.family} c={monsterCol} name={mons.minion.name} x={0} y={0} />
             </g>
           </g>
+          {shieldUp && !heroKo && <ShieldAura x={62} y={100} />}
           {/* knocked out, the hero switches to the dedicated defeated sprite (it carries its own dizzy stars) */}
           {heroKo ? (
             <g transform="translate(70 136) scale(2.1)">
@@ -372,6 +447,8 @@ export default function BattleQuiz({
               </g>
             </g>
           )}
+          {fx?.kind === 'deflect' && <ShieldDeflectFx fxKey={fx.id} x={62} y={100} />}
+          {fx?.kind === 'heal' && !heroKo && <HealSparkle fxKey={fx.id} x={62} y={100} />}
         </svg>
         {fx?.kind === 'hit' && (
           <>
@@ -395,6 +472,20 @@ export default function BattleQuiz({
             </span>
           </>
         )}
+        {fx?.kind === 'deflect' && (
+          <>
+            <HitFlash kind="deflect" fxKey={fx.id} />
+            <span className="fx-at fx-hero">
+              {reduced && <ShieldIcon size={28} className="jr-icon fx-shield-static" />}
+              <DamageNumber amount={0} kind="block" fxKey={fx.id} />
+            </span>
+          </>
+        )}
+        {fx?.kind === 'heal' && (
+          <span className="fx-at fx-hero">
+            <DamageNumber amount={fx.amount ?? 0} kind="heal" fxKey={fx.id} />
+          </span>
+        )}
         {phase === 'won' && monsterHp > 0 && <span className="finish-banner">Finishing blow!</span>}
       </div>
 
@@ -404,6 +495,20 @@ export default function BattleQuiz({
           <strong>Hero</strong>
           <StatBar kind="hp" title="HP" value={party.hp.value} max={hpMax} wounded={party.hp.state === 'wounded'} ko={party.hp.state === 'ko'} paused={party.hp.paused} flash={hitsKey > 0} flashKey={hitsKey} />
           <StatBar kind="mp" title="MP" value={party.mp.value} max={party.mp.max} />
+          {(shieldUp || deflected || potions > 0) && (
+            <p className="plate-status small">
+              {(shieldUp || deflected) && (
+                <span>
+                  <ShieldIcon size={14} broken={!shieldUp} /> {shieldUp ? 'Shield ready' : 'Shield used'}
+                </span>
+              )}
+              {potions > 0 && (
+                <span>
+                  <PotionIcon size={14} /> ×{potions}
+                </span>
+              )}
+            </p>
+          )}
         </div>
         <div className="plate">
           <strong>{mons.minion.name}</strong>
@@ -427,6 +532,7 @@ export default function BattleQuiz({
             autoFocus={phase === 'asking'}
             className="answers"
           />
+          <div className="battle-tools">
           <div className="hint-row">
             <button
               type="button"
@@ -446,6 +552,25 @@ export default function BattleQuiz({
               </span>
             )}
           </div>
+          <div className="hint-row">
+            <button
+              type="button"
+              className="jr-potion-btn"
+              aria-disabled={potionState === 'ready' ? undefined : true}
+              aria-describedby={potionReason ? 'potion-why' : undefined}
+              aria-keyshortcuts="P"
+              data-sfx="none"
+              onClick={drink}
+            >
+              <PotionIcon size={18} empty={potions === 0} /> Potion ×{potions} <kbd className="kbd">P</kbd>
+            </button>
+            {potionReason && (
+              <span id="potion-why" className="jr-hint-reason">
+                {potionReason}
+              </span>
+            )}
+          </div>
+          </div>
           {hintBought && q.hint && <HintCard><InlineText text={q.hint} /></HintCard>}
 
           {phase === 'resolved' && picked !== null && (
@@ -453,6 +578,10 @@ export default function BattleQuiz({
               {picked === q.answer ? (
                 <p>
                   <strong>Correct!</strong> The {mons.minion.name} takes {dmgPerHit} damage.
+                </p>
+              ) : deflected && lastMiss === 0 ? (
+                <p>
+                  <strong>The {mons.minion.name} strikes, but your auto-shield deflects it! 0 damage.</strong> The answer was: {q.options[q.answer]}
                 </p>
               ) : (
                 <p>
@@ -508,6 +637,16 @@ export default function BattleQuiz({
               Back to the lesson
             </button>
           </div>
+          {practiceWin ? (
+            <p className="muted small">Practice run: replays don&apos;t pay gold.</p>
+          ) : (
+            goldWon !== null &&
+            goldWon > 0 && (
+              <p className="gold-gain">
+                <GoldCoinIcon size={16} /> +{goldWon} gold
+              </p>
+            )
+          )}
           {practiceWin && innOffer && <InnPrompt />}
         </div>
       )}

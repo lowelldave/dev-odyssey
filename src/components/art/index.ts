@@ -11,3 +11,4 @@ export * from './DungeonLandmark';
 export * from './BattleFx';
 export * from './HintCard';
 export * from './HeroDefeated';
+export * from './ShopLandmark';

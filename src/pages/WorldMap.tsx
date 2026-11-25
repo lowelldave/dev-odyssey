@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bar, ChestBody, SaveCrystalBody } from '../components/art';
+import { Bar, ChestBody, SaveCrystalBody, ShopLandmarkBody } from '../components/art';
 import MapMenu from '../components/menu/MapMenu';
+import ShopWindow from '../components/menu/ShopWindow';
+import BottomSheet from '../components/ui/BottomSheet';
 import PartyPanel from '../components/PartyPanel';
 import { isBackupDue } from '../lib/save';
 import { CHEST_CLOSED } from '../store';
@@ -40,6 +42,12 @@ const CULL_STEP = 200;
 /** World-space positions (with the natural jitter) and their projected screen points. */
 const POS = layoutPositions(ISLANDS);
 const SP: Record<string, { x: number; y: number }> = Object.fromEntries(Object.entries(POS).map(([id, p]) => [id, project(p.x, p.y)]));
+
+/** The merchant's stall: on open ground south of Web Village, clear of its plot, label, roads and the Rust area to the west. */
+const SHOP_WORLD = { x: POS.web.x + 40, y: POS.web.y + 300 };
+const SHOP_SP = project(SHOP_WORLD.x, SHOP_WORLD.y);
+/** label plate sits just below the stall's ground point */
+const PLOT_SHOP_LABEL_Y = 34;
 
 /** Land banners float just off each land's coast (world space, outside the continent). */
 const REGION_LABELS: { region: Region; x: number; y: number }[] = [
@@ -106,6 +114,7 @@ function AreaProgress({ island, completed, nextTitle }: { island: Island; comple
 export default function WorldMap() {
   const completed = useStore((s) => s.completed);
   const name = useStore((s) => s.name);
+  const [shopOpen, setShopOpen] = useState(false);
   const [view, setView] = useState<'map' | 'list'>(() => {
     try {
       return (localStorage.getItem('do-view') as 'map' | 'list') ?? 'map';
@@ -142,7 +151,7 @@ export default function WorldMap() {
                 ▶ Continue: {next.quest.title}
               </Link>
             )}
-            <MapMenu />
+            <MapMenu onShop={() => setShopOpen(true)} />
             <div className="seg">
               <button className={view === 'map' ? 'on' : ''} onClick={() => setViewSaved('map')}>
                 🗺️ World
@@ -158,7 +167,10 @@ export default function WorldMap() {
         </div>
       </section>
 
-      {view === 'map' ? <MapView heroAt={next?.island ?? ISLAND_MAP.summit} /> : <ListView />}
+      {view === 'map' ? <MapView heroAt={next?.island ?? ISLAND_MAP.summit} onShop={() => setShopOpen(true)} /> : <ListView />}
+      <BottomSheet open={shopOpen} onClose={() => setShopOpen(false)} title="Item Shop">
+        <ShopWindow />
+      </BottomSheet>
 
       <div className="legend">
         <span>
@@ -178,7 +190,7 @@ export default function WorldMap() {
   );
 }
 
-function MapView({ heroAt }: { heroAt: Island }) {
+function MapView({ heroAt, onShop }: { heroAt: Island; onShop: () => void }) {
   const completed = useStore((s) => s.completed);
   const navigate = useNavigate();
   const [hover, setHover] = useState<string | null>(null);
@@ -193,6 +205,7 @@ function MapView({ heroAt }: { heroAt: Island }) {
     for (const i of ISLANDS) avoid.push({ x: POS[i.id].x + 150, y: POS[i.id].y + 150, r: 130 });
     for (const r of ROADS) for (const p of r.world) avoid.push({ ...p, r: 46 });
     for (const l of REGION_LABELS) avoid.push({ x: l.x, y: l.y, r: 260 });
+    avoid.push({ ...SHOP_WORLD, r: 160 });
     return scatterDecorations(
       avoid,
       ISLANDS.map((i) => ({ id: i.id, ...POS[i.id] })),
@@ -344,14 +357,14 @@ function MapView({ heroAt }: { heroAt: Island }) {
     else if (e.key === '-') zoomAt(1 / 1.2);
   };
 
-  /** When tabbing to an area that is off screen, pan to it. */
-  const revealArea = (island: Island) => {
+  /** When tabbing to something that is off screen, pan to it. */
+  const revealPoint = (x: number, y: number) => {
     if (!cam) return;
     const vw = size.w / cam.scale;
     const vh = size.h / cam.scale;
-    const { x, y } = SP[island.id];
     if (Math.abs(x - cam.cx) > vw / 2 - 120 || Math.abs(y - cam.cy) > vh / 2 - 120) centerOn(x, y);
   };
+  const revealArea = (island: Island) => revealPoint(SP[island.id].x, SP[island.id].y);
 
   const view = cam ? { w: size.w / cam.scale, h: size.h / cam.scale } : { w: W, h: H };
   const viewBox = cam ? `${cam.cx - view.w / 2} ${cam.cy - view.h / 2} ${view.w} ${view.h}` : `0 0 ${W} ${H}`;
@@ -395,6 +408,9 @@ function MapView({ heroAt }: { heroAt: Island }) {
   const revealRef = useRef(revealArea);
   revealRef.current = revealArea;
   const onAreaFocus = useCallback((island: Island) => revealRef.current(island), []);
+  const revealPointRef = useRef(revealPoint);
+  revealPointRef.current = revealPoint;
+  const onShopFocus = useCallback(() => revealPointRef.current(SHOP_SP.x, SHOP_SP.y), []);
   const onAreaOpen = useCallback((id: string) => navigate(`/island/${id}`), [navigate]);
 
   return (
@@ -531,6 +547,8 @@ function MapView({ heroAt }: { heroAt: Island }) {
           );
         })}
 
+        <ShopNode onOpen={onShop} onFocus={onShopFocus} />
+
         {/* areas, back to front */}
         {[...ISLANDS]
           .sort((a, b) => SP[a.id].y - SP[b.id].y)
@@ -573,6 +591,43 @@ const Scenery = memo(function Scenery({ decorations, indices, infos }: { decorat
         const blighted = !!info && info.level !== 0 && d.roll >= progress;
         return <DecoItem key={i} kind={blighted ? corruptKind(d.kind) : d.kind} x={d.x} y={d.y} s={d.s} />;
       })}
+    </g>
+  );
+});
+
+/** The Item Shop landmark: always available, opens the shop window. */
+const ShopNode = memo(function ShopNode({ onOpen, onFocus }: { onOpen: () => void; onFocus: () => void }) {
+  const gold = useStore((s) => s.gold);
+  return (
+    <g
+      className="shop-node"
+      transform={`translate(${SHOP_SP.x.toFixed(1)}, ${SHOP_SP.y.toFixed(1)})`}
+      data-sfx="confirm"
+      tabIndex={0}
+      role="button"
+      aria-label={`Item Shop: potions, auto-shields and tents. You have ${gold.toLocaleString()} gold.`}
+      onFocus={onFocus}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <title>Item Shop</title>
+      {/* Transparent hit area so clicks between painted pixels (awning, crate, label) still open the shop. */}
+      <rect x={-62} y={-66} width={124} height={PLOT_SHOP_LABEL_Y + 82} fill="transparent" />
+      <ellipse className="shop-ring" cx="0" cy="4" rx="58" ry="26" />
+      <g className="jr-shop" aria-hidden="true">
+        <ShopLandmarkBody />
+      </g>
+      <g transform={`translate(0, ${PLOT_SHOP_LABEL_Y})`} aria-hidden="true">
+        <rect x={-34} y={-15} width={68} height={30} rx="6" className="area-label-bg" />
+        <text className="area-label" x={0} y="6" textAnchor="middle">
+          Shop
+        </text>
+      </g>
     </g>
   );
 });

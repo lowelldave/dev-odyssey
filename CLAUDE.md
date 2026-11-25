@@ -40,6 +40,7 @@ Stack: Vite 5, React 18, TypeScript 5 (strict), react-router-dom 6 (`HashRouter`
   Check the console after editing content.
 
 ### Game state and rules
+- `src/lib/items.ts` holds the gold and item rules (prices, carry limits, `rollQuestGold`, `retroGold`). The store keeps `gold` and `items` (persist v4 grants past clears gold once via `consumeRetroGrant`), and the auto-shield flag lives on the persisted `battle`.
 - `src/store.ts` is the single zustand store, persisted under the localStorage key `dev-odyssey-save` (`version` + `migrate`; `celebration` is excluded from persistence).
   - `completed` is keyed by `questKey(islandId, questId)` = `"island/quest"`.
   - `completeQuest()` computes XP, area completion, newly unlocked areas and level-ups, and raises the `celebration` modal.

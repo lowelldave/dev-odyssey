@@ -4,6 +4,7 @@ import type { Island, Quest } from '../types';
 // the quiz and battle rules live in their own pure modules; `game` stays the one place to import them from
 export * from './battle';
 export * from './quiz';
+export * from './items';
 import { HP_MAX, REGEN_MS, maxMp, regenNow } from './battle';
 
 export const XP = { quiz: 50, project: 150, boss: 300, islandBonus: 200 } as const;

@@ -7,7 +7,7 @@ import { useReducedMotion } from '../lib/motion';
 import { sfx } from '../lib/sound';
 import { useStore } from '../store';
 import type { Island, ProjectCheckpoint, Quest } from '../types';
-import { BattleBackdrop, Bar } from './art';
+import { BattleBackdrop, Bar, GoldCoinIcon } from './art';
 import { shade } from './art/util';
 import { Monster } from './AreaScene';
 import { Hero } from './Overworld';
@@ -37,6 +37,8 @@ export default function ProjectChecker({
   const [report, setReport] = useState<CheckReport | null>(null);
   // the report arrives in one piece; it is revealed one check at a time (presentation only: no HP is lost here)
   const [revealed, setRevealed] = useState(0);
+  // gold from a first clear; 0 for a re-check of a cleared quest
+  const [goldWon, setGoldWon] = useState(0);
   const reduced = useReducedMotion();
   const pending = useRef<(() => void) | null>(null);
   const boss = monstersOf(island.id).boss;
@@ -47,7 +49,7 @@ export default function ProjectChecker({
     const finish = () => {
       if (!pending.current) return;
       pending.current = null;
-      if (report.passed) completeQuest(island.id, quest.id, { score: report.score, repo: report.repo });
+      if (report.passed) setGoldWon(completeQuest(island.id, quest.id, { score: report.score, repo: report.repo }));
     };
     pending.current = finish;
     if (reduced || total === 0) {
@@ -78,6 +80,7 @@ export default function ProjectChecker({
     setError('');
     setReport(null);
     setRevealed(0);
+    setGoldWon(0);
     setBusy(true);
     try {
       const rep = await runProjectCheck(url, checkpoint, token, setProgress);
@@ -180,6 +183,11 @@ export default function ProjectChecker({
           <div className="report-head">
             <div>
               <strong>{report.passed ? '🏆 Boss defeated! Project approved.' : '💫 The boss still stands'}</strong>
+              {report.passed && goldWon > 0 && (
+                <p className="gold-gain">
+                  <GoldCoinIcon size={16} /> +{goldWon} gold
+                </p>
+              )}
               <p className="muted small">
                 {report.repo} @ {report.branch} · {report.fileCount} files inspected
               </p>

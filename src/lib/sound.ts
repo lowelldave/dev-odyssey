@@ -75,6 +75,9 @@ export type Sfx =
   | 'campfire'
   | 'chest'
   | 'save'
+  | 'coin'
+  | 'potion'
+  | 'deflect'
   | 'text';
 
 const SOUNDS: Record<Sfx, () => void> = {
@@ -173,6 +176,25 @@ const SOUNDS: Record<Sfx, () => void> = {
       { freq: 988, dur: 0.1, vol: 0.09, type: 'sine' },
       { freq: 1319, at: 0.1, dur: 0.1, vol: 0.09, type: 'sine' },
       { freq: 1976, at: 0.2, dur: 0.3, vol: 0.08, type: 'sine' },
+    ]),
+  // two bright coin blips
+  coin: () =>
+    play([
+      { freq: 1320, dur: 0.07, vol: 0.1, type: 'square' },
+      { freq: 1760, at: 0.07, dur: 0.18, vol: 0.1, type: 'square' },
+    ]),
+  // a rising glug
+  potion: () =>
+    play([
+      { freq: 300, dur: 0.1, vol: 0.12, type: 'triangle', to: 500 },
+      { freq: 420, at: 0.09, dur: 0.1, vol: 0.12, type: 'triangle', to: 700 },
+      { freq: 600, at: 0.18, dur: 0.14, vol: 0.1, type: 'triangle', to: 950 },
+    ]),
+  // metallic clang
+  deflect: () =>
+    play([
+      { freq: 880, dur: 0.06, vol: 0.12, type: 'square' },
+      { freq: 1200, at: 0.02, dur: 0.25, vol: 0.09, type: 'sine' },
     ]),
   // dialogue typewriter blip (throttled in sfx)
   text: () => play([{ freq: 520, dur: 0.02, vol: 0.04, type: 'square' }]),

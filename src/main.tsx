@@ -45,6 +45,10 @@ if (import.meta.env.DEV) {
         activity: Object.fromEntries(Array.from({ length: run }, (_, i) => [day(gap + i), 10])),
         restDays: {},
       }),
+    setGold: (n: number) => useStore.setState({ gold: Math.max(0, Math.round(n)) }),
+    giveItem: (id: game.ItemId, n = 1) =>
+      useStore.setState((s) => ({ items: { ...s.items, [id]: Math.min(game.ITEMS[id].max, Math.max(0, n)) } })),
+    clearItems: () => useStore.setState({ items: { ...game.EMPTY_INVENTORY } }),
     resetIntro: () => useStore.setState({ dialoguesSeen: {} }),
   };
   Object.assign(window, { __store: useStore, __game: game, __dev: dev });

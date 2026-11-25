@@ -866,6 +866,22 @@ a.note:focus-visible {
   color: #3d8a3d;
   font-weight: 700;
   font-family: var(--pixel);
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 8px;
+}
+.note-gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #9a6a00;
+  white-space: nowrap;
+}
+.note-gold.is-claimed {
+  color: #8a7a66;
+  text-decoration: line-through;
 }
 .stamp {
   position: absolute;
@@ -908,7 +924,7 @@ a.note:focus-visible {
 .seal {
   position: absolute;
   right: 14px;
-  bottom: 40px;
+  bottom: 66px; /* sits above the note foot so the EXP and gold rewards stay readable */
   width: 38px;
   height: 38px;
   display: grid;

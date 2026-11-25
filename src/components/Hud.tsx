@@ -4,6 +4,7 @@ import { MAX_SESSION_MINUTES, levelInfo, streak, titleFor } from '../lib/game';
 import { useStore } from '../store';
 import { Cursor } from './art';
 import PartyPanel from './PartyPanel';
+import Purse from './Purse';
 
 const NAV = [
   { to: '/', icon: '🗺️', label: 'World' },
@@ -47,6 +48,9 @@ export default function Hud() {
         >
           {sound ? '🔊' : '🔇'}
         </button>
+        <span className="chip chip-gold" title="Your gold. Spend it at the Item Shop.">
+          <Purse variant="chip" />
+        </span>
         <span className="chip" title={`Current streak: ${st.current} days (best ${st.best}). Nights bridged by the Campfire count towards it.`}>
           🔥 {st.current}
         </span>

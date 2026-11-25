@@ -367,3 +367,40 @@
 .flee-row { display: flex; justify-content: flex-start; }
 .flee-confirm { width: 100%; padding: 10px 12px; border: 2px solid var(--warn); border-radius: 6px; background: var(--slot); }
 .flee-confirm p { margin: 0 0 6px; }
+
+/* ---------- gold, items and the shop ---------- */
+.purse { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 8px 0; }
+.purse-gold { display: inline-flex; align-items: center; gap: 4px; color: var(--gold); font: 700 14px var(--pixel); }
+.purse-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.purse-items li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 2px solid var(--line); border-radius: 999px; background: var(--slot); font: 600 12px var(--pixel); }
+.purse-items li.is-empty { opacity: 0.55; }
+.purse-chip { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+/* Top bar chips (sound, gold, streak, timer) share one height and line box, whatever they hold. */
+.hud-stats .chip { box-sizing: border-box; height: 32px; line-height: 1; }
+.hud-stats .chip .jr-icon, .hud-stats .chip svg { flex: none; }
+.party-purse { display: grid; gap: 6px; justify-items: start; }
+.tent-use { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tent-use .btn[aria-disabled='true'], .shop-buy[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
+.battle-kit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-weight: 600; }
+.battle-kit > span { display: inline-flex; align-items: center; gap: 4px; }
+.battle-tools { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.jr-potion-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px;
+  font: 700 14px var(--pixel); color: var(--text); background: var(--slot);
+  border: 2px solid var(--ok); border-radius: 6px; cursor: pointer;
+}
+.jr-potion-btn:hover:not([aria-disabled='true']) { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+.jr-potion-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.jr-potion-btn[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; border-style: dashed; }
+.plate-status { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 0; }
+.plate-status span { display: inline-flex; align-items: center; gap: 4px; }
+.fx-shield-static { position: absolute; top: 4px; }
+.shop-greet { display: flex; align-items: center; gap: 10px; }
+.shop-greet p { margin: 0; }
+.shop-gold { display: flex; align-items: center; gap: 4px; margin: 8px 0 0; color: var(--gold); font: 700 15px var(--pixel); }
+.shop-list li { flex-wrap: wrap; }
+.shop-list li > div p { margin: 2px 0 0; }
+.shop-buy { min-height: 44px; min-width: 76px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+@media (max-width: 380px) {
+  .shop-list li > .shop-buy { width: 100%; }
+}

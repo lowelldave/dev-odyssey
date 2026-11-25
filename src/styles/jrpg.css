@@ -333,3 +333,40 @@
   .jr-sheet { transform: none; }
   .jr-dlg-more { transform: none; }
 }
+
+/* ---------- gold, shop, items ---------- */
+.jr-shop-svg { display: block; overflow: visible; }
+.jr-dmg-block { color: #cfe8ff; font-size: 16px; white-space: nowrap; }
+.jr-flash-deflect { background: #bfe0ff; animation: jr-flash 0.4s ease-out; }
+.chip-gold { border-color: color-mix(in srgb, var(--gold) 70%, var(--line)); color: var(--gold); }
+.chip-gold .jr-icon { flex: none; }
+.gold-gain { color: var(--gold); font-family: var(--pixel); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+.gold-gain .jr-icon { width: 1.1em; height: 1.1em; }
+
+/* shop landmark on the map: ring + lift on hover/focus, like area nodes */
+.shop-node { cursor: pointer; outline: none; }
+.shop-node .jr-shop { transition: transform 0.15s; }
+.shop-node:hover .jr-shop, .shop-node:focus-visible .jr-shop { transform: translateY(-3px) scale(1.05); }
+.shop-node .shop-ring { fill: none; stroke: var(--gold, #ffd34d); stroke-width: 3; opacity: 0; transition: opacity 0.15s; }
+.shop-node:hover .shop-ring, .shop-node:focus-visible .shop-ring { opacity: 0.9; }
+.shop-node:hover .jr-shop-sign, .shop-node:focus-visible .jr-shop-sign { animation: jr-sign-swing 1.2s ease-in-out infinite; }
+.jr-shop-sign { transform-box: fill-box; transform-origin: 0 0; }
+@keyframes jr-sign-swing { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+
+/* shield + heal effects */
+.jr-aura-ring { transform-box: fill-box; transform-origin: 50% 50%; animation: jr-pulse 3.2s ease-in-out infinite; }
+.jr-deflect { transform-box: fill-box; transform-origin: 50% 50%; opacity: 0; animation: jr-deflect 0.6s ease-out forwards; }
+.jr-deflect-crack { opacity: 0; animation: jr-deflect-crack 0.9s ease-out 0.12s forwards; }
+@keyframes jr-deflect { 0% { transform: scale(0.7); opacity: 0; } 25% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1.2); opacity: 0; } }
+@keyframes jr-deflect-crack { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+.jr-heal-spark { transform-box: fill-box; transform-origin: 50% 50%; opacity: 0; animation: jr-heal-rise 0.9s ease-out both; }
+@keyframes jr-heal-rise { 0% { transform: translateY(6px) scale(0.5); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-16px) scale(1); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .jr-aura-ring { transform: none; opacity: 0.9; }
+  .jr-deflect { transform: none; opacity: 0; }
+  .jr-deflect-crack { opacity: 0; }
+  .jr-heal-spark { opacity: 0; transform: none; }
+  .jr-shop-sign { transform: none; }
+  .shop-node:hover .jr-shop, .shop-node:focus-visible .jr-shop { transform: none; }
+}

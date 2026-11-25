@@ -1,6 +1,6 @@
 import { Svg, INK, shade } from './util';
 
-export type PortraitWho = 'sage' | 'hero' | 'innkeeper' | 'campfire' | 'crystal';
+export type PortraitWho = 'sage' | 'hero' | 'innkeeper' | 'campfire' | 'crystal' | 'merchant';
 export interface PortraitProps {
   who: PortraitWho;
   /** px; 48 default, 32 for the mini hint portrait, 64+ for dialogue */
@@ -11,7 +11,7 @@ export interface PortraitProps {
   title?: string;
 }
 
-const FRAME: Record<PortraitWho, string> = { sage: '#2f5aa8', hero: '#a8321f', innkeeper: '#b8742a', campfire: '#c2511a', crystal: '#2a8fb0' };
+const FRAME: Record<PortraitWho, string> = { sage: '#2f5aa8', hero: '#a8321f', innkeeper: '#b8742a', campfire: '#c2511a', crystal: '#2a8fb0', merchant: '#2f7a4a' };
 
 function Face({ who, ko }: { who: PortraitWho; ko: boolean }) {
   const skin = '#f0c79a';
@@ -70,6 +70,21 @@ function Face({ who, ko }: { who: PortraitWho; ko: boolean }) {
           <path d="M24 6 Q36 18 33 30 Q31 38 24 38 Q16 38 15 30 Q13 22 20 16 Q20 22 24 24 Q22 14 24 6 Z" fill="#ff6a2a" stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
           <path d="M24 20 Q31 28 29 33 Q27 37 24 37 Q20 37 19 33 Q18 28 24 20 Z" fill="#ffc83d" />
           <path d="M24 29 Q27 32 26 35 Q25 37 24 37 Q22 37 22 35 Q21 32 24 29 Z" fill="#fff3b0" />
+        </g>
+      );
+    case 'merchant':
+      return (
+        <g>
+          <path d="M5 48 L8 36 Q24 30 40 36 L43 48 Z" fill="#2f7a4a" stroke={INK} strokeWidth="1.2" />
+          <path d="M15 48 L17 38 L31 38 L33 48 Z" fill="#8a5a2c" stroke={INK} strokeWidth="1" />
+          <circle cx="24" cy="43" r="3" fill="#ffd34d" stroke={INK} strokeWidth="1" />
+          <ellipse cx="24" cy="23" rx="10" ry="10.5" fill="#e8b88a" stroke={INK} strokeWidth="1.2" />
+          <path d="M8 17 Q24 14 40 17 Q36 4 24 4 Q12 4 8 17 Z" fill="#e8a71c" stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M10 17 Q24 21 38 17" fill="none" stroke={INK} strokeWidth="1.2" />
+          {eye(20, 23)}
+          {eye(28, 23)}
+          <path d="M16 28 Q24 27 32 28 Q31 34 24 33 Q17 34 16 28 Z" fill="#6b3d1f" stroke={INK} strokeWidth="1" strokeLinejoin="round" />
+          <path d="M22 29.5 Q24 31 26 29.5" fill="none" stroke="#f0c79a" strokeWidth="1.2" strokeLinecap="round" />
         </g>
       );
     case 'crystal':

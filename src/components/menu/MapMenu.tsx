@@ -4,7 +4,7 @@ import { ISLAND_MAP } from '../../data';
 import { nextQuests } from '../../lib/game';
 import { sfx } from '../../lib/sound';
 import { useStore } from '../../store';
-import { CampfireIcon, InnIcon, SaveIcon, TomeIcon } from '../art';
+import { CampfireIcon, InnIcon, SaveIcon, ShopIcon, TomeIcon } from '../art';
 import BottomSheet from '../ui/BottomSheet';
 import type { CommandItem } from '../ui/CommandMenu';
 import CommandMenu from '../ui/CommandMenu';
@@ -15,13 +15,14 @@ import SaveDialog from './SaveDialog';
 type View = 'menu' | 'items' | 'campfire' | 'save' | 'inn';
 const TITLES: Record<View, string> = { menu: 'Menu', items: 'Items', campfire: 'Campfire', save: 'Save', inn: 'Wayside Inn' };
 
-/** The map command menu: Continue, Quests, Items, Campfire, Save and (only while an offer exists) Inn. */
-export default function MapMenu() {
+/** The map command menu: Continue, Quests, Items, Shop, Campfire, Save and (only while an offer exists) Inn. */
+export default function MapMenu({ onShop }: { onShop: () => void }) {
   const [view, setView] = useState<View | null>(null);
   const completed = useStore((s) => s.completed);
   const innOffer = useStore((s) => s.innOffer);
   const redeemInn = useStore((s) => s.redeemInn);
   const showToast = useStore((s) => s.showToast);
+  const gold = useStore((s) => s.gold);
   const navigate = useNavigate();
   const next = nextQuests(completed, 1)[0];
   const close = () => setView(null);
@@ -29,7 +30,8 @@ export default function MapMenu() {
   const items: CommandItem[] = [
     { id: 'continue', label: 'Continue', detail: next ? next.quest.title : 'Nothing left to do', icon: <span aria-hidden="true">▶</span>, disabled: !next, reason: 'Every quest is cleared' },
     { id: 'quests', label: 'Quests', detail: next ? `${next.island.name} quest board` : undefined, icon: <span aria-hidden="true">📋</span>, disabled: !next, reason: 'Every quest is cleared' },
-    { id: 'items', label: 'Items', detail: 'Rest tokens, chests and Tomes', icon: <TomeIcon size={20} /> },
+    { id: 'items', label: 'Items', detail: 'Potions, shields, tents, rest tokens and Tomes', icon: <TomeIcon size={20} /> },
+    { id: 'shop', label: 'Shop', detail: `${gold.toLocaleString()} gold · potions, shields, tents`, icon: <ShopIcon size={20} /> },
     { id: 'campfire', label: 'Campfire', detail: 'Protects your streak', icon: <CampfireIcon size={20} /> },
     { id: 'save', label: 'Save', detail: 'Write or load a Save Scroll', icon: <SaveIcon size={20} /> },
     ...(innOffer ? [{ id: 'inn', label: 'Inn', detail: 'Rest: +50 HP, +30 MP', badge: '!', icon: <InnIcon size={20} /> }] : []),
@@ -42,6 +44,9 @@ export default function MapMenu() {
     } else if (id === 'quests' && next) {
       close();
       navigate(`/island/${next.island.id}`);
+    } else if (id === 'shop') {
+      close();
+      onShop();
     } else if (id === 'items' || id === 'campfire' || id === 'save' || id === 'inn') {
       sfx('confirm');
       setView(id);

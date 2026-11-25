@@ -11,7 +11,7 @@ import Profile from './pages/Profile';
 import QuestPage from './pages/QuestPage';
 import WorldMap from './pages/WorldMap';
 import { type Sfx, sfx } from './lib/sound';
-import { useStore } from './store';
+import { consumeRetroGrant, useStore } from './store';
 
 export default function App() {
   const { pathname } = useLocation();
@@ -34,6 +34,14 @@ export default function App() {
   // (HP already lost stays lost; a knockout revives), and never leave regeneration paused
   useEffect(() => {
     useStore.getState().endBattle();
+  }, []);
+  // a v3 save that just upgraded: say once what its past victories paid (the Campfire toast may replace it)
+  useEffect(() => {
+    const g = consumeRetroGrant();
+    if (g > 0) {
+      useStore.getState().showToast(`Your past victories earned ${g.toLocaleString()} gold. Visit the Item Shop near Web Village!`);
+      sfx('coin');
+    }
   }, []);
   // Campfire: on load and whenever the tab comes back, bridge a short gap in the streak with rest tokens
   useEffect(() => {

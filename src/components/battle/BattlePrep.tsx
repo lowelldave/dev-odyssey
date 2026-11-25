@@ -1,13 +1,15 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { monstersOf } from '../../data/monsters';
 import { armBattle } from '../../lib/battleNav';
-import { HINT_COST, QUIZ_DRAW, neededToPass, partyStats, questKey, safeMisses } from '../../lib/game';
+import { HINT_COST, ITEMS, QUIZ_DRAW, neededToPass, partyStats, questKey, safeMisses } from '../../lib/game';
 import { sfx } from '../../lib/sound';
 import { useNow } from '../../lib/useNow';
 import { useStore } from '../../store';
 import type { Island, Quest, QuizCheckpoint } from '../../types';
 import { shade } from '../art/util';
 import { Monster } from '../AreaScene';
+import { PotionIcon, ShieldIcon } from '../art';
+import TentButton from '../TentButton';
 import StatBar from '../ui/StatBar';
 
 /** The checkpoint on the quest page: a preview of the fight. "Begin battle" opens the battle page. */
@@ -26,9 +28,12 @@ export default function BattlePrep({ island, quest, checkpoint }: { island: Isla
   const mp = useStore((s) => s.mp);
   const mpAt = useStore((s) => s.mpAt);
   const xp = useStore((s) => s.xp);
+  const items = useStore((s) => s.items);
   const now = useNow(1000);
   const party = partyStats({ hp, hpAt, mp, mpAt, xp }, now);
   const afford = safeMisses(party.hp.value);
+  const ownsAny = items.potion + items.shield + items.tent > 0;
+  const needsRest = party.hp.value < party.hp.max || party.mp.value < party.mp.max;
 
   const begin = () => {
     sfx('confirm');
@@ -60,6 +65,23 @@ export default function BattlePrep({ island, quest, checkpoint }: { island: Isla
         You can afford {afford} wrong answer{afford === 1 ? '' : 's'}.
         {afford <= 1 && (afford === 0 ? ' Even one miss could knock you out.' : ' One more miss after that could knock you out.')}
       </p>
+      <div className="battle-kit">
+        {ownsAny ? (
+          <>
+            <span>
+              <PotionIcon size={16} empty={items.potion === 0} /> Potions ×{items.potion}/{ITEMS.potion.max}
+            </span>
+            <span>
+              <ShieldIcon size={16} broken={items.shield === 0} /> {items.shield > 0 ? 'Auto-shield ready (equips automatically)' : 'No auto-shield'}
+            </span>
+            {items.tent > 0 && needsRest && <TentButton compact />}
+          </>
+        ) : (
+          <span className="muted small">
+            Buy potions and shields at the shop near Web Village (<Link to="/">world map</Link>).
+          </span>
+        )}
+      </div>
       {innOffer && (
         <p className="muted small">
           A wayside Inn is open on the <Link to={`/island/${innOffer.islandId}`}>quest board</Link>. Starting a battle closes it.

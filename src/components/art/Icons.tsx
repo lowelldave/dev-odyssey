@@ -113,3 +113,68 @@ export const SaveIcon = (p: IconProps) =>
       <path d="M10 1.6 L7.4 7 L7.4 17.4 L5 7Z" fill="#a8ecff" stroke={INK} strokeWidth="0.8" strokeLinejoin="round" />
     </>,
   );
+
+/** Gold: a two-coin stack with a stamped G and a bright rim. Distinct from RestTokenIcon (single coin, flame). */
+export const GoldCoinIcon = (p: IconProps) =>
+  I(
+    p,
+    <>
+      <ellipse cx="12.2" cy="6.6" rx="5.4" ry="3.2" fill="#e8a71c" {...S} />
+      <path d="M2.6 11 V14 Q2.6 17.6 9 17.6 Q15.4 17.6 15.4 14 V11 Z" fill="#c4841a" {...S} />
+      <ellipse cx="9" cy="11" rx="6.4" ry="3.6" fill="#ffe27a" {...S} />
+      <ellipse cx="9" cy="11" rx="4.6" ry="2.5" fill="#ffd34d" stroke="#a8671a" strokeWidth="0.7" />
+      <path d="M10.8 9.9 Q10 9 8.9 9 Q7.2 9 7.2 11 Q7.2 13 8.9 13 Q10.4 13 10.5 11.6 H8.9" fill="none" stroke="#7a4a12" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.2 9.6 Q5 8.6 6.4 8.2" fill="none" stroke="#fff8d0" strokeWidth="0.9" strokeLinecap="round" />
+    </>,
+  );
+
+/** Potion flask. `empty` shows a hollow, greyed flask (none owned). */
+export const PotionIcon = (p: IconProps & { empty?: boolean }) =>
+  I(
+    p,
+    <>
+      <path d="M7.6 2.8 H12.4 V7 Q16.4 9 16.4 13 Q16.4 17.6 10 17.6 Q3.6 17.6 3.6 13 Q3.6 9 7.6 7 Z" fill={p.empty ? 'rgba(255,255,255,0.12)' : '#ef4a6a'} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" strokeDasharray={p.empty ? '2.4 1.8' : undefined} />
+      {!p.empty && <path d="M4.2 12 Q10 10 15.8 12 Q16 17 10 17 Q4 17 4.2 12Z" fill="#ff8aa0" />}
+      {!p.empty && <path d="M6 12.4 Q6 10.6 7.8 9.6" fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" />}
+      <rect x="7.2" y="1.4" width="5.6" height="2.4" rx="0.8" fill="#b8742a" stroke={INK} strokeWidth="1" />
+    </>,
+  );
+
+/** Guard shield. `broken` shows a cracked, greyed shield (already used). */
+export const ShieldIcon = (p: IconProps & { broken?: boolean }) =>
+  I(
+    p,
+    <>
+      <path d="M10 2 L16.6 4.4 V10 Q16.6 15 10 18 Q3.4 15 3.4 10 V4.4 Z" fill={p.broken ? '#8a8ea0' : '#4aa8ff'} {...S} />
+      <path d="M10 2 L3.4 4.4 V10 Q3.4 15 10 18 Z" fill={p.broken ? '#a6a9b8' : '#a8d8ff'} stroke={INK} strokeWidth="0.8" strokeLinejoin="round" />
+      <path d="M10 5 V14.4 M6.4 8.6 H13.6" stroke={p.broken ? '#c8ccd8' : '#fff'} strokeWidth="1.6" strokeLinecap="round" />
+      {p.broken && <path d="M12 2.6 L9.6 8 L12.2 10 L9 17.6" fill="none" stroke={INK} strokeWidth="1.3" strokeLinejoin="round" />}
+    </>,
+  );
+
+/** Tent: canvas A-frame with an open flap. */
+export const TentIcon = (p: IconProps) =>
+  I(
+    p,
+    <>
+      <path d="M10 2.6 L18 16.6 H2 Z" fill="#f1d9a8" {...S} />
+      <path d="M10 2.6 L2 16.6 H10 Z" fill="#fff0cc" stroke={INK} strokeWidth="0.8" strokeLinejoin="round" />
+      <path d="M10 8 L13.6 16.6 H6.4 Z" fill="#7a3a22" stroke={INK} strokeWidth="1" strokeLinejoin="round" />
+      <path d="M10 2.6 V1.2 M10 1.4 H12.6 V3 H10" fill="#e8a71c" stroke={INK} strokeWidth="0.9" strokeLinejoin="round" />
+      <path d="M1 17.6 H19" stroke={INK} strokeWidth="1.2" strokeLinecap="round" />
+    </>,
+  );
+
+/** Item Shop menu icon: market stall with striped awning. */
+export const ShopIcon = (p: IconProps) =>
+  I(
+    p,
+    <>
+      <rect x="3.6" y="9" width="12.8" height="8.4" fill="#d9b277" {...S} />
+      <rect x="5" y="11.4" width="3.6" height="6" fill="#7a4a22" stroke={INK} strokeWidth="0.8" />
+      <circle cx="13" cy="13.4" r="2.2" fill="#ffd34d" stroke={INK} strokeWidth="0.9" />
+      <path d="M2 9.4 L3.6 3.4 H16.4 L18 9.4 Z" fill="#fff" {...S} />
+      <path d="M5.6 3.4 L5 9.4 H8 L8.2 3.4Z M11.8 3.4 L12 9.4 H15 L14.4 3.4Z" fill="#d9452a" />
+      <path d="M2 9.4 L3.6 3.4 H16.4 L18 9.4 Z" fill="none" stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
+    </>,
+  );

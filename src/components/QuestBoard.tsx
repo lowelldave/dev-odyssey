@@ -1,10 +1,10 @@
 import { Fragment, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { type Completed, isQuestDone, isQuestUnlocked, questXp } from '../lib/game';
+import { type Completed, GOLD_BOSS, GOLD_REGULAR, isQuestDone, isQuestUnlocked, questXp } from '../lib/game';
 import { sfx } from '../lib/sound';
 import { useStore } from '../store';
 import type { Island, Quest } from '../types';
-import { InnNoteArt } from './art';
+import { GoldCoinIcon, InnNoteArt } from './art';
 
 const PIN_COLORS = ['#e8564a', '#3f8fe0', '#f2b632', '#4fb36a', '#b06ad9'];
 
@@ -17,6 +17,17 @@ function hash(s: string) {
 function kindLabel(quest: Quest) {
   if (quest.boss) return quest.tutorial ? 'Guided project + review' : 'Project review';
   return quest.tutorial ? 'Tutorial + trial' : 'Trial';
+}
+
+/** The gold a quest pays on its first clear; once cleared it reads "claimed", since replays don't pay. */
+function Gold({ quest, done }: { quest: Quest; done: boolean }) {
+  const amount = quest.boss ? `${GOLD_BOSS}` : `${GOLD_REGULAR[0]}–${GOLD_REGULAR[GOLD_REGULAR.length - 1]}`;
+  return (
+    <span className={`note-gold${done ? ' is-claimed' : ''}`} title={done ? 'Gold already claimed: replays pay no gold' : 'Gold paid on the first clear'}>
+      <GoldCoinIcon size={14} /> {amount} G
+      {done && <span className="sr-only"> (claimed)</span>}
+    </span>
+  );
 }
 
 export default function QuestBoard({ island, completed }: { island: Island; completed: Completed }) {
@@ -55,7 +66,9 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
                 <span className="note-title">{quest.title.replace(/^Boss:\s*/, '')}</span>
                 <span className="note-summary">{quest.summary}</span>
                 <span className="note-kind">{kindLabel(quest)}</span>
-                <span className="note-reward">Reward: {questXp(quest)} EXP</span>
+                <span className="note-reward">
+                  Reward: {questXp(quest)} EXP <Gold quest={quest} done={done} />
+                </span>
                 {done && <span className="stamp">DEFEATED</span>}
                 {!unlocked && <span className="seal" aria-hidden>🔒</span>}
               </>
@@ -67,7 +80,9 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
                 <span className="note-summary">{unlocked ? quest.summary : i === 0 ? 'Sealed — clear the roads to this area first.' : `Sealed until you clear quest ${i}.`}</span>
                 <span className="note-foot">
                   <span className="note-kind">{kindLabel(quest)}</span>
-                  <span className="note-reward">+{questXp(quest)} EXP</span>
+                  <span className="note-reward">
+                    +{questXp(quest)} EXP <Gold quest={quest} done={done} />
+                  </span>
                 </span>
                 {done && <span className="stamp">CLEARED</span>}
                 {!unlocked && <span className="seal" aria-hidden>🔒</span>}
@@ -81,7 +96,7 @@ export default function QuestBoard({ island, completed }: { island: Island; comp
                 className={cls}
                 style={style}
                 data-sfx="confirm"
-                aria-label={`${quest.boss ? 'Boss battle' : `Quest ${i + 1}`}: ${quest.title}${done ? ' (cleared)' : ''}`}
+                aria-label={`${quest.boss ? 'Boss battle' : `Quest ${i + 1}`}: ${quest.title}${done ? ' (cleared, gold claimed)' : ''}. Reward: ${questXp(quest)} EXP${done ? '' : quest.boss ? `, ${GOLD_BOSS} gold` : `, ${GOLD_REGULAR[0]} to ${GOLD_REGULAR[GOLD_REGULAR.length - 1]} gold`}.`}
               >
                 {body}
               </Link>

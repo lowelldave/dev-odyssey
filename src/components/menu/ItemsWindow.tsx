@@ -1,14 +1,24 @@
 import { useState } from 'react';
 import { ISLAND_MAP } from '../../data';
-import { REST_TOKENS_MAX } from '../../lib/game';
+import { ITEMS, ITEM_ORDER, type ItemId, REST_TOKENS_MAX } from '../../lib/game';
 import { sfx } from '../../lib/sound';
 import { tomeOf } from '../../lib/tome';
 import { CHEST_CLOSED, useStore } from '../../store';
-import { Chest, RestTokenIcon, TomeIcon } from '../art';
+import { Chest, PotionIcon, RestTokenIcon, ShieldIcon, TentIcon, TomeIcon } from '../art';
+import Purse from '../Purse';
+import TentButton from '../TentButton';
+
+const ITEM_ICONS = { potion: <PotionIcon size={28} />, shield: <ShieldIcon size={28} />, tent: <TentIcon size={28} /> } as const;
+const ITEM_NOTES: Record<ItemId, string> = {
+  potion: 'Drink one per question during a battle.',
+  shield: 'Equips itself and is used up when it deflects a hit.',
+  tent: 'Cannot be used during a battle.',
+};
 
 /** Rest tokens, chests from purified areas, and their Tomes. */
 export default function ItemsWindow() {
   const tokens = useStore((s) => s.restTokens);
+  const owned = useStore((s) => s.items);
   const chests = useStore((s) => s.chests);
   const openChest = useStore((s) => s.openChest);
   const showToast = useStore((s) => s.showToast);
@@ -18,7 +28,21 @@ export default function ItemsWindow() {
 
   return (
     <div>
+      <Purse />
       <ul className="items-list" aria-label="Items">
+        {ITEM_ORDER.map((id) => (
+          <li key={id} className={owned[id] === 0 ? 'is-locked' : ''}>
+            {ITEM_ICONS[id]}
+            <div>
+              <strong>
+                {ITEMS[id].name} ×{owned[id]}/{ITEMS[id].max}
+              </strong>
+              <p className="muted small">{ITEMS[id].desc}</p>
+              <p className="muted small">{ITEM_NOTES[id]}</p>
+            </div>
+            {id === 'tent' && <TentButton compact />}
+          </li>
+        ))}
         <li>
           <RestTokenIcon size={28} />
           <div>

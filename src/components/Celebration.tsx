@@ -8,13 +8,14 @@ import { useFocusTrap } from '../lib/focus';
 import { sfx } from '../lib/sound';
 import { tomeOf } from '../lib/tome';
 import { CHEST_CLOSED, useStore } from '../store';
-import { BadgeSlotIcon, Chest, HeartIcon, InnScene, MpCrystalIcon, Portrait, RestTokenIcon, TomeIcon } from './art';
+import { BadgeSlotIcon, Chest, GoldCoinIcon, HeartIcon, InnScene, MpCrystalIcon, Portrait, RestTokenIcon, TomeIcon } from './art';
 import StatBar from './ui/StatBar';
 
 /** The victory screen: battle log, party bars, healing, a wayside Inn offer, chest and new badges. */
 export default function Celebration() {
   const c = useStore((s) => s.celebration);
   const dismiss = useStore((s) => s.dismissCelebration);
+  const purse = useStore((s) => s.gold);
 
   const sparkles = useMemo(
     () =>
@@ -69,6 +70,12 @@ export default function Celebration() {
         <div className="battle-log">
           <p>{defeated}</p>
           <p className="exp">Gained {c.xp} EXP!</p>
+          {c.gold > 0 && (
+            <p className="gold-gain">
+              <GoldCoinIcon size={18} /> {island.quests[index]?.boss ? `The ${mons.boss.name} dropped` : 'Found'} {c.gold} gold!
+              <span className="muted small"> (Purse: {purse.toLocaleString()})</span>
+            </p>
+          )}
           {c.levelUp && (
             <p className="lvl">
               Level up! You reached LV {c.levelUp}: {titleFor(c.levelUp)}.
